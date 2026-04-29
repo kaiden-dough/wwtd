@@ -21,6 +21,15 @@ class AppState extends ChangeNotifier {
   double get betAmount => _betAmount;
   double get userBalance => _userBalance;
   List<LeaderboardEntry> get leaderboard => _leaderboard;
+  List<String> get people {
+    final List<String> ordered = <String>[];
+    for (final PredictionMarket market in _markets) {
+      if (!ordered.contains(market.person)) {
+        ordered.add(market.person);
+      }
+    }
+    return ordered;
+  }
 
   void updateTab(int index) {
     if (_selectedTabIndex == index) {
@@ -100,6 +109,33 @@ class AppState extends ChangeNotifier {
 
     _markets[marketIndex] = updated;
     _userBalance -= _betAmount;
+    notifyListeners();
+  }
+
+  void createMarket({
+    required String person,
+    required String question,
+    required String dateLabel,
+    required bool creatorPickedYes,
+    required double creatorStake,
+  }) {
+    final String normalizedPerson = person.trim();
+    final String normalizedQuestion = question.trim();
+    if (normalizedPerson.isEmpty || normalizedQuestion.isEmpty) {
+      return;
+    }
+
+    final double startingPot = creatorStake.clamp(1, 100000).toDouble();
+    final PredictionMarket market = PredictionMarket(
+      id: 'u-${DateTime.now().microsecondsSinceEpoch}',
+      person: normalizedPerson,
+      question: normalizedQuestion,
+      dateLabel: dateLabel,
+      yesWageredPoints: creatorPickedYes ? startingPot : 0,
+      noWageredPoints: creatorPickedYes ? 0 : startingPot,
+    );
+    _markets.insert(0, market);
+    _selectedPerson = normalizedPerson;
     notifyListeners();
   }
 
