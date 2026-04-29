@@ -57,9 +57,12 @@ class AppShell extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text(
-          'What Would They Do?',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          'What would ${appState.selectedPerson} do?',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+          ),
         ),
         centerTitle: false,
       ),

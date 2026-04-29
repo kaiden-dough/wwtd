@@ -11,15 +11,14 @@ class BettingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    final bool isWide = MediaQuery.sizeOf(context).width >= 900;
     final Map<String, List<PredictionMarket>> grouped = appState.groupedMarkets();
 
     return SafeArea(
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1080),
+          constraints: const BoxConstraints(maxWidth: 460),
           child: ListView(
-            padding: EdgeInsets.symmetric(horizontal: isWide ? 24 : 14, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
             children: <Widget>[
               Text(
                 'Markets',
@@ -73,39 +72,43 @@ class _PeopleSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isMobile = MediaQuery.sizeOf(context).width < 560;
-    if (isMobile) {
-      return DropdownButtonFormField<String>(
-        initialValue: selectedPerson,
-        decoration: const InputDecoration(
-          labelText: 'Person',
-          border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-        items: samplePeople.map((String person) {
-          return DropdownMenuItem<String>(
-            value: person,
-            child: Text(person),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool useDropdown = constraints.maxWidth < 560;
+        if (useDropdown) {
+          return DropdownButtonFormField<String>(
+            initialValue: selectedPerson,
+            decoration: const InputDecoration(
+              labelText: 'Person',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            items: samplePeople.map((String person) {
+              return DropdownMenuItem<String>(
+                value: person,
+                child: Text(person, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (String? value) {
+              if (value != null) {
+                onChanged(value);
+              }
+            },
           );
-        }).toList(),
-        onChanged: (String? value) {
-          if (value != null) {
-            onChanged(value);
-          }
-        },
-      );
-    }
+        }
 
-    return SegmentedButton<String>(
-      segments: samplePeople
-          .map((String person) => ButtonSegment<String>(value: person, label: Text(person)))
-          .toList(),
-      selected: <String>{selectedPerson},
-      onSelectionChanged: (Set<String> selection) => onChanged(selection.first),
-      style: SegmentedButton.styleFrom(
-        selectedForegroundColor: Colors.white,
-        selectedBackgroundColor: const Color(0xFF1556A8),
-      ),
+        return SegmentedButton<String>(
+          segments: samplePeople
+              .map((String person) => ButtonSegment<String>(value: person, label: Text(person)))
+              .toList(),
+          selected: <String>{selectedPerson},
+          onSelectionChanged: (Set<String> selection) => onChanged(selection.first),
+          style: SegmentedButton.styleFrom(
+            selectedForegroundColor: Colors.white,
+            selectedBackgroundColor: const Color(0xFF1556A8),
+          ),
+        );
+      },
     );
   }
 }

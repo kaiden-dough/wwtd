@@ -35,6 +35,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     _selectedPerson = person;
+    _refreshMarketsIfSelectionMissing();
     notifyListeners();
   }
 
@@ -108,5 +109,25 @@ class AppState extends ChangeNotifier {
       return _leaderboard.length;
     }
     return index + 1;
+  }
+
+  void _refreshMarketsIfSelectionMissing() {
+    final bool hasLoadedMarketsForSelection = _markets.any(
+      (PredictionMarket market) => market.person == _selectedPerson,
+    );
+    if (hasLoadedMarketsForSelection) {
+      return;
+    }
+
+    final bool hasSourceMarketsForSelection = marketData.any(
+      (PredictionMarket market) => market.person == _selectedPerson,
+    );
+    if (!hasSourceMarketsForSelection) {
+      return;
+    }
+
+    _markets
+      ..clear()
+      ..addAll(List<PredictionMarket>.from(marketData));
   }
 }
