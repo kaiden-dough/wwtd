@@ -1,0 +1,20 @@
+# In Render, set the service Root Directory to `wwtd/backend` (repo root = wwtd git root).
+services:
+  - type: web
+    name: wwtd-api
+    runtime: python
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: CORS_ORIGINS
+        value: "*"
+      # Optional: attach a Render Disk mounted at /var/data, then set:
+      # - key: SQLITE_PATH
+      #   value: /var/data/wwtd.db
