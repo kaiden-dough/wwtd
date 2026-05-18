@@ -7,11 +7,22 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class LoginCode(Base):
+    __tablename__ = "login_codes"
+
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Profile(Base):
     __tablename__ = "profiles"
+    __table_args__ = (UniqueConstraint("email", name="uq_profiles_email"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

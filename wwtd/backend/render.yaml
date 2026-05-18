@@ -9,10 +9,18 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.8"
-      - key: SUPABASE_JWT_SECRET
+      - key: JWT_SECRET
         sync: false
-      - key: SUPABASE_JWT_AUDIENCE
-        value: authenticated
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
       - key: CORS_ORIGINS
         value: "*"
       # Optional: attach a Render Disk mounted at /var/data, then set:

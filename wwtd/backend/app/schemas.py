@@ -13,6 +13,17 @@ class ProfileOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AuthTokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    profile: ProfileOut
+
+
+class SendCodeOut(BaseModel):
+    message: str
+    dev_code: str | None = None
+
+
 class PersonCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
