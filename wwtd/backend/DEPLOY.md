@@ -580,3 +580,4 @@ For wwtd with friends, **verified Gmail is enough**.
 2. **Render** → Settings → Custom Domain → `api.yourdomain.com`.
 3. Update `API_BASE_URL` in Flutter build to `https://api.yourdomain.com`.
 4. Update `CORS_ORIGINS` to `https://app.yourdomain.com`.
+<!-- redeploy -->
