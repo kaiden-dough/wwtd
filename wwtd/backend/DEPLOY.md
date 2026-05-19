@@ -70,31 +70,34 @@ After the API has deployed once (step 2), you can open **Table Editor** and see 
 
 ---
 
-## 2. Render (backend API) — second
+## 2. Render (backend API) — Web Service (no Blueprint)
 
-### 2.1 Create web service
+### 2.1 Connect GitHub
 
-**Option A — Blueprint (if `render.yaml` is in repo)**
+1. [dashboard.render.com](https://dashboard.render.com) → **New +** → **Web Service**.
+2. **Build and deploy from a Git repository** → connect GitHub if needed → select your `wwtd` repo.
+3. Click **Connect**.
 
-1. Render Dashboard → **New +** → **Blueprint**.
-2. Connect GitHub → select `wwtd` repo.
-3. Render reads `wwtd/backend/render.yaml`. Confirm service name `wwtd-api`.
-4. Set **Root Directory** to `wwtd/backend` if prompted.
+### 2.2 Service settings
 
-**Option B — Manual web service**
+Fill in exactly:
 
-1. **New +** → **Web Service** → connect repo.
-2. Settings:
-   - **Name:** `wwtd-api`
-   - **Root Directory:** `wwtd/backend`
-   - **Runtime:** Python 3
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-   - **Instance type:** Free or Starter (free sleeps after inactivity).
+| Field | Value |
+|-------|--------|
+| **Name** | `wwtd-api` (or any name; becomes part of the URL) |
+| **Region** | Same region as Supabase if possible (e.g. Oregon) |
+| **Branch** | `main` (or your default branch) |
+| **Root Directory** | `wwtd/backend` |
+| **Runtime** | `Python 3` |
+| **Build Command** | `pip install -r requirements.txt` |
+| **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| **Instance Type** | Free (sleeps when idle) or Starter |
 
-### 2.2 Environment variables
+Leave **Docker** off. Do not use Blueprint for this setup.
 
-In the service → **Environment** → add:
+### 2.3 Environment variables
+
+Scroll to **Environment Variables** → **Add Environment Variable** for each:
 
 | Key | Value | Required |
 |-----|--------|----------|
@@ -111,24 +114,32 @@ In the service → **Environment** → add:
 
 Do **not** set `SQLITE_PATH` when using Supabase.
 
-### 2.3 Deploy
+### 2.4 Create and deploy
 
-1. **Save** env vars → **Manual Deploy** → **Deploy latest commit** (or push to `main`).
-2. Watch **Logs** until you see Uvicorn running.
-3. Open:
+1. Click **Create Web Service** (bottom).
+2. First deploy starts automatically. Open the **Logs** tab.
+3. Wait until you see something like `Uvicorn running on http://0.0.0.0:10000`.
+4. At the top, copy your service URL, e.g. `https://wwtd-api.onrender.com` (no trailing slash).
 
-   `https://wwtd-api-xxxx.onrender.com/health`
+### 2.5 Verify health
 
-   Expected: `{"status":"ok"}`
+In a browser or terminal:
+
+```text
+https://YOUR-SERVICE.onrender.com/health
+```
+
+Expected: `{"status":"ok"}`
 
 If deploy fails:
 
-- **Database connection error** → wrong password, wrong URI, or use pooler port 6543.
-- **Module not found** → check Root Directory is `wwtd/backend`.
+- **Database connection error** → wrong password, wrong URI, or use pooler port **6543**.
+- **Module not found** → **Root Directory** must be `wwtd/backend`.
+- **Build failed** → open Logs → Build; confirm `requirements.txt` exists in that folder.
 
-### 2.4 Smoke-test API (optional)
+### 2.6 Smoke-test login (optional)
 
-With `EXPOSE_DEV_OTP=true` temporarily you can test login without SMTP; set back to `false` after SMTP works.
+With `EXPOSE_DEV_OTP=true` temporarily you can test without SMTP; set back to `false` after email works.
 
 ```bash
 curl -X POST https://YOUR-SERVICE.onrender.com/api/auth/send-code \
@@ -138,87 +149,115 @@ curl -X POST https://YOUR-SERVICE.onrender.com/api/auth/send-code \
 
 ---
 
-## 3. Vercel (Flutter web) — third
+## 3. Vercel (Flutter web) — after Render works
 
-You need the **Render URL** from step 2 (no trailing slash).
+You need the **Render URL** from step 2.5 (no trailing slash). Vercel does not include Flutter — build on your PC, then upload `build/web`.
 
-### 3.1 Build locally (recommended first time)
+### 3.1 Build the web app
 
 ```powershell
-cd wwtd/frontend
+cd wwtd\frontend
 flutter pub get
 flutter build web --release --dart-define=API_BASE_URL=https://YOUR-SERVICE.onrender.com
 ```
 
-Output: `wwtd/frontend/build/web/`
+Replace `YOUR-SERVICE` with your real Render hostname. Output: `wwtd\frontend\build\web\`
 
-Test locally:
+Optional local test:
 
 ```powershell
-cd build/web
+cd build\web
 python -m http.server 8080
 ```
 
-Open `http://localhost:8080` — app should call Render API (check browser Network tab).
+Open `http://localhost:8080` → F12 → Network → confirm requests go to your Render URL.
 
-### 3.2 Deploy to Vercel
+### 3.2 Deploy with Vercel CLI (recommended)
 
-**Option A — Vercel CLI**
+1. Install Node.js if needed, then:
+
+   ```powershell
+   npm install -g vercel
+   ```
+
+2. Log in and deploy the **built** folder:
+
+   ```powershell
+   cd wwtd\frontend\build\web
+   vercel login
+   vercel
+   ```
+
+3. First run asks:
+   - Link to existing project? **N**
+   - Project name? e.g. `wwtd`
+   - Directory? **./** (current `build/web`)
+4. Production deploy:
+
+   ```powershell
+   vercel --prod
+   ```
+
+5. CLI prints your live URL, e.g. `https://wwtd.vercel.app` — save it for step 4.
+
+### 3.3 Redeploy after API or code changes
+
+Any time you change the Render URL or frontend code:
 
 ```powershell
-npm i -g vercel
-cd wwtd/frontend
-# Build first with dart-define (Vercel does not include Flutter by default)
+cd wwtd\frontend
 flutter build web --release --dart-define=API_BASE_URL=https://YOUR-SERVICE.onrender.com
-cd build/web
+cd build\web
 vercel --prod
 ```
 
-**Option B — GitHub + Vercel dashboard (build Flutter in CI)**
+### 3.4 Alternative: Vercel dashboard (import repo)
 
-Because Vercel’s default image has no Flutter, use a GitHub Action to build `build/web` and deploy, or build locally and deploy `build/web` as a static site.
+If you prefer the UI without CLI:
 
-**Option B2 — Vercel project pointing at prebuilt `build/web`**
+1. Build locally (step 3.1) first — required.
+2. [vercel.com/new](https://vercel.com/new) → add project → **Deploy** by dragging the **contents** of `build/web` into [vercel.com/drop](https://vercel.com/new) (static deploy), **or** use CLI as above (simpler for updates).
 
-1. [vercel.com/new](https://vercel.com/new) → Import Git repo.
-2. **Root Directory:** `wwtd/frontend`
-3. For a **static export** workflow, build on your machine, commit `build/web` (not ideal) OR use the Action below.
-
-**Option C — Vercel with environment variable (if you add a Flutter build Action)**
-
-Create `.github/workflows/deploy-web.yml` that runs `flutter build web --dart-define=API_BASE_URL=${{ secrets.API_BASE_URL }}` and deploys `build/web` with Vercel Action.
-
-Minimal Vercel settings when deploying **only** the `build/web` folder:
-
-- **Framework Preset:** Other
-- **Output Directory:** `.` (if uploading `build/web` contents)
-
-`vercel.json` in `wwtd/frontend` handles SPA routing.
-
-### 3.3 Note your Vercel URL
-
-After deploy: e.g. `https://wwtd.vercel.app` or `https://wwtd-yourteam.vercel.app`
+Do not point Vercel’s build at `flutter build` unless you add your own CI — the default Vercel builder has no Flutter SDK.
 
 ---
 
 ## 4. Lock down CORS on Render — last
 
-1. Render → `wwtd-api` → **Environment**.
-2. Set `CORS_ORIGINS` to your **exact** Vercel origin (no trailing slash):
+Until now `CORS_ORIGINS` was probably `*`. Lock it to your Vercel site only.
+
+1. [dashboard.render.com](https://dashboard.render.com) → open **wwtd-api** (your Web Service).
+2. **Environment** → edit `CORS_ORIGINS`.
+3. Set to your **exact** Vercel URL (no trailing slash):
 
    ```text
    https://wwtd.vercel.app
    ```
 
-   Multiple origins: comma-separated:
+   Multiple sites: comma-separated, no spaces:
 
    ```text
-   https://wwtd.vercel.app,https://www.yourdomain.com
+   https://wwtd.vercel.app,https://wwtd-git-main-you.vercel.app
    ```
 
-3. **Save** → redeploy.
+4. **Save Changes**. Render redeploys automatically (1–2 min).
 
-Reload the Vercel app → sign in → create/join room. Data lives in Supabase.
+### 4.1 Final test
+
+1. Open your Vercel URL in a private/incognito window.
+2. Sign in with email → code (check email or SMTP).
+3. Choose display name (new users).
+4. Create or join a room → add a question → place a bet.
+5. Supabase → **Table Editor** → confirm rows in `profiles`, `rooms`, `questions`.
+
+### 4.2 Later deploys
+
+| Change | What to do |
+|--------|------------|
+| Backend code | Push to GitHub → Render auto-deploys |
+| Env var on Render | Edit Environment → Save (redeploys) |
+| Frontend code | Rebuild Flutter + `vercel --prod` from `build/web` |
+| New Vercel preview URL | Add that origin to `CORS_ORIGINS` if you use preview deploys |
 
 ---
 
