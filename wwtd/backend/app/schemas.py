@@ -44,6 +44,7 @@ class BetOut(BaseModel):
     payout_amount: float | None
     market_status: str
     winning_side: str | None
+    market_betting_open: bool = True
     created_at: datetime
 
 
@@ -102,6 +103,7 @@ class QuestionOut(BaseModel):
     status: str
     winning_side: str | None = None
     created_at: datetime
+    betting_open: bool = True
     yes_wagered_points: float
     no_wagered_points: float
     user_yes_bet: float = 0

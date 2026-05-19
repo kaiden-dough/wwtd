@@ -22,7 +22,6 @@ _USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,32}$")
 class RegisterBody(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=8, max_length=128)
-    display_name: str = Field(min_length=1, max_length=200)
 
 
 class LoginBody(BaseModel):
@@ -64,7 +63,7 @@ def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> Aut
         id=str(uuid.uuid4()),
         username=username,
         password_hash=hash_password(body.password),
-        display_name=body.display_name.strip(),
+        display_name=username,
         balance_points=float(settings.starting_balance_points),
     )
     db.add(profile)

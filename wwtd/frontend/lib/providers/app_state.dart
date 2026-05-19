@@ -57,7 +57,17 @@ class AppState extends ChangeNotifier {
   }
 
   String get selectedPerson => selectedRoom?.personName ?? 'they';
-  List<PredictionMarket> get displayMarkets => _questions;
+  List<PredictionMarket> get displayMarkets {
+    final List<PredictionMarket> sorted = List<PredictionMarket>.from(_questions);
+    sorted.sort((PredictionMarket a, PredictionMarket b) {
+      final int pastCmp = (a.isPast ? 1 : 0).compareTo(b.isPast ? 1 : 0);
+      if (pastCmp != 0) {
+        return pastCmp;
+      }
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return sorted;
+  }
   double get betAmount => _betAmount;
 
   /// Bets for the currently selected room only.
@@ -65,7 +75,16 @@ class AppState extends ChangeNotifier {
     if (_selectedRoomId == null) {
       return <UserBet>[];
     }
-    return _myBets.where((UserBet b) => b.roomId == _selectedRoomId).toList();
+    final List<UserBet> bets =
+        _myBets.where((UserBet b) => b.roomId == _selectedRoomId).toList();
+    bets.sort((UserBet a, UserBet b) {
+      final int pastCmp = (a.isPast ? 1 : 0).compareTo(b.isPast ? 1 : 0);
+      if (pastCmp != 0) {
+        return pastCmp;
+      }
+      return b.createdAt.compareTo(a.createdAt);
+    });
+    return bets;
   }
   double get userBalance => _user?.balancePoints ?? 0;
   List<RoomLeaderboard> get roomLeaderboards => _roomLeaderboards;
@@ -167,9 +186,8 @@ class AppState extends ChangeNotifier {
   Future<void> register({
     required String username,
     required String password,
-    required String displayName,
   }) async {
-    final String? validationError = _validateCredentials(username, password, displayName: displayName);
+    final String? validationError = _validateCredentials(username, password);
     if (validationError != null) {
       _authError = validationError;
       notifyListeners();
@@ -179,7 +197,6 @@ class AppState extends ChangeNotifier {
     await _authenticate(() => _api.register(
           username: username,
           password: password,
-          displayName: displayName,
         ));
   }
 
@@ -287,16 +304,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? _validateCredentials(String username, String password, {String? displayName}) {
+  String? _validateCredentials(String username, String password) {
     final String normalized = username.trim().toLowerCase();
     if (!RegExp(r'^[a-zA-Z0-9_]{3,32}$').hasMatch(normalized)) {
       return 'Username must be 3–32 characters: letters, numbers, underscore only';
     }
     if (password.length < 8) {
       return 'Password must be at least 8 characters';
-    }
-    if (displayName != null && displayName.trim().isEmpty) {
-      return 'Enter a display name';
     }
     return null;
   }

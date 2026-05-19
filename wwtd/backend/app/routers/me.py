@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_profile
 from app.db import get_db
 from app.models import Bet, Person, Profile, Question, Room, RoomMember
+from app.question_betting import betting_open_for
 from app.schemas import BetOut, ProfileOut, ProfileUpdate
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -55,8 +56,17 @@ def list_my_bets(
     )
     if room_id is not None:
         stmt = stmt.where(Room.id == room_id)
-    stmt = stmt.order_by(Bet.created_at.desc())
     rows = db.execute(stmt).all()
+
+    def _bet_is_past(question: Question) -> bool:
+        if question.status == "resolved":
+            return True
+        return not betting_open_for(status=question.status, created_at=question.created_at)
+
+    rows = sorted(
+        rows,
+        key=lambda row: (1 if _bet_is_past(row[1]) else 0, -row[0].created_at.timestamp()),
+    )
     return [
         BetOut(
             id=bet.id,
@@ -69,6 +79,9 @@ def list_my_bets(
             payout_amount=float(bet.payout_amount) if bet.payout_amount is not None else None,
             market_status=question.status,
             winning_side=question.winning_side,
+            market_betting_open=betting_open_for(
+                status=question.status, created_at=question.created_at
+            ),
             created_at=bet.created_at,
         )
         for bet, question, room, person in rows

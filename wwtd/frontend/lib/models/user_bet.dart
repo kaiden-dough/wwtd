@@ -7,6 +7,8 @@ class UserBet {
     required this.side,
     required this.amount,
     required this.marketStatus,
+    required this.createdAt,
+    this.marketBettingOpen = true,
     this.payoutAmount,
     this.winningSide,
   });
@@ -20,6 +22,11 @@ class UserBet {
   final double? payoutAmount;
   final String marketStatus;
   final String? winningSide;
+  final DateTime createdAt;
+  final bool marketBettingOpen;
+
+  bool get isResolved => marketStatus == 'resolved';
+  bool get isPast => isResolved || !marketBettingOpen;
 
   factory UserBet.fromJson(Map<String, dynamic> json) {
     return UserBet(
@@ -32,6 +39,8 @@ class UserBet {
       payoutAmount: (json['payout_amount'] as num?)?.toDouble(),
       marketStatus: json['market_status'] as String,
       winningSide: json['winning_side'] as String?,
+      marketBettingOpen: json['market_betting_open'] as bool? ?? true,
+      createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 }

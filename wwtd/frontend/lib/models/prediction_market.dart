@@ -8,9 +8,11 @@ class PredictionMarket {
     required this.yesWageredPoints,
     required this.noWageredPoints,
     required this.createdBy,
+    required this.createdAt,
     this.isModerator = false,
     this.status = 'open',
     this.winningSide,
+    this.bettingOpen = true,
     this.userYesBet = 0,
     this.userNoBet = 0,
   });
@@ -23,14 +25,18 @@ class PredictionMarket {
   final double yesWageredPoints;
   final double noWageredPoints;
   final String createdBy;
+  final DateTime createdAt;
   final bool isModerator;
   final String status;
   final String? winningSide;
+  final bool bettingOpen;
   final double userYesBet;
   final double userNoBet;
 
   bool get isOpen => status == 'open';
   bool get isResolved => status == 'resolved';
+  bool get isBettingOpen => isOpen && bettingOpen;
+  bool get isPast => isResolved || !bettingOpen;
 
   double get totalPot => yesWageredPoints + noWageredPoints;
   double get yesPercent => totalPot == 0 ? 50 : (yesWageredPoints / totalPot) * 100;
@@ -47,6 +53,8 @@ class PredictionMarket {
       isModerator: json['is_moderator'] as bool? ?? false,
       status: json['status'] as String? ?? 'open',
       winningSide: json['winning_side'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      bettingOpen: json['betting_open'] as bool? ?? true,
       yesWageredPoints: (json['yes_wagered_points'] as num).toDouble(),
       noWageredPoints: (json['no_wagered_points'] as num).toDouble(),
       userYesBet: (json['user_yes_bet'] as num?)?.toDouble() ?? 0,
@@ -61,6 +69,7 @@ class PredictionMarket {
     double? userNoBet,
     String? status,
     String? winningSide,
+    bool? bettingOpen,
     bool? isModerator,
   }) {
     return PredictionMarket(
@@ -70,9 +79,11 @@ class PredictionMarket {
       person: person,
       question: question,
       createdBy: createdBy,
+      createdAt: createdAt,
       isModerator: isModerator ?? this.isModerator,
       status: status ?? this.status,
       winningSide: winningSide ?? this.winningSide,
+      bettingOpen: bettingOpen ?? this.bettingOpen,
       yesWageredPoints: yesWageredPoints ?? this.yesWageredPoints,
       noWageredPoints: noWageredPoints ?? this.noWageredPoints,
       userYesBet: userYesBet ?? this.userYesBet,

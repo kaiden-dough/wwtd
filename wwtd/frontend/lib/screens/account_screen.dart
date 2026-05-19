@@ -85,11 +85,11 @@ class _BetHistorySection extends StatelessWidget {
           )
         else
           ...bets.take(20).map((UserBet bet) {
-            final String payoutLabel = bet.marketStatus == 'resolved'
+            final String payoutLabel = bet.isResolved
                 ? (bet.payoutAmount != null && bet.payoutAmount! > 0
                     ? 'Won ${bet.payoutAmount!.toStringAsFixed(0)} pts'
                     : 'Lost')
-                : 'Open';
+                : (bet.isPast ? 'Locked' : 'Open');
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
@@ -123,9 +123,8 @@ class _LoggedInSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String label = user.displayName?.isNotEmpty == true
-        ? user.displayName!
-        : (user.username.isNotEmpty ? user.username : 'Player');
+    final String label =
+        user.username.isNotEmpty ? user.username : (user.displayName ?? 'Player');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -9,6 +9,7 @@ from app.db import get_db
 from app.market_codes import generate_join_code
 from app.models import Bet, Person, Profile, Question, Room, RoomMember
 from app.payouts import resolve_question
+from app.question_betting import betting_open_for, is_betting_open
 from app.refunds import refund_question_bets
 from app.schemas import BetCreate, QuestionCreate, QuestionOut, QuestionResolve, RoomCreate, RoomJoin, RoomOut
 
@@ -108,7 +109,6 @@ def _run_questions_query(
             Question.created_at,
             Room.created_by,
         )
-        .order_by(Question.created_at.desc())
     )
     if room_id is not None:
         stmt = stmt.where(Question.room_id == room_id)
@@ -116,7 +116,7 @@ def _run_questions_query(
         stmt = stmt.where(Question.id == question_id)
 
     rows = db.execute(stmt).all()
-    return [
+    questions = [
         QuestionOut(
             id=m.id,
             room_id=m.room_id,
@@ -129,6 +129,7 @@ def _run_questions_query(
             status=m.status,
             winning_side=m.winning_side,
             created_at=m.created_at,
+            betting_open=betting_open_for(status=m.status, created_at=m.created_at),
             yes_wagered_points=float(m.yes_total or 0),
             no_wagered_points=float(m.no_total or 0),
             user_yes_bet=float(m.user_yes or 0),
@@ -136,6 +137,13 @@ def _run_questions_query(
         )
         for m in rows
     ]
+    questions.sort(
+        key=lambda q: (
+            1 if (q.status == "resolved" or not q.betting_open) else 0,
+            -q.created_at.timestamp(),
+        )
+    )
+    return questions
 
 
 def _room_out(room: Room, person: Person, profile: Profile) -> RoomOut:
@@ -299,6 +307,11 @@ def place_bet(
     _require_member(db, room, profile)
     if question.status != "open":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not open for betting")
+    if not is_betting_open(question):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Betting is closed (24 hours have passed or question was resolved)",
+        )
 
     amount = float(body.amount)
     _deduct_balance(profile, amount)

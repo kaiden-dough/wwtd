@@ -18,7 +18,7 @@ class MarketCard extends StatelessWidget {
     final double betAmount = appState.betAmount;
     final double yesPayout = appState.expectedPayout(market: market, isYes: true, bet: betAmount);
     final double noPayout = appState.expectedPayout(market: market, isYes: false, bet: betAmount);
-    final bool canBet = appState.isLoggedIn && market.isOpen;
+    final bool canBet = appState.isLoggedIn && market.isBettingOpen;
     final bool canResolve = appState.canResolveMarket(market);
     final bool canDelete = appState.canDeleteQuestion(market);
 
@@ -65,9 +65,18 @@ class MarketCard extends StatelessWidget {
             if (market.isResolved) ...<Widget>[
               const SizedBox(height: 8),
               Text(
-                'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won',
+                'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won — betting closed',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: const Color(0xFF1454A7),
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ] else if (!market.bettingOpen) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'Betting closed — 24 hours have passed',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: const Color(0xFF607182),
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -109,6 +118,11 @@ class MarketCard extends StatelessWidget {
             else if (!appState.isLoggedIn)
               Text(
                 'Sign in to bet',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+              )
+            else if (!market.isBettingOpen)
+              Text(
+                'Betting is locked on this question',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
               ),
             if (canResolve) ...<Widget>[

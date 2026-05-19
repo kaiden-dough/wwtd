@@ -13,7 +13,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late final TabController _tabController;
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _displayNameController = TextEditingController();
 
   @override
   void initState() {
@@ -31,7 +30,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _tabController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
-    _displayNameController.dispose();
     super.dispose();
   }
 
@@ -60,7 +58,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign in to bet on predictions with friends.',
+                    isRegister
+                        ? 'Pick a username — that\'s how you appear on leaderboards.'
+                        : 'Sign in to bet on predictions with friends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF607182)),
                   ),
@@ -99,7 +99,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             controller: _passwordController,
                             obscureText: true,
                             autocorrect: false,
-                            textInputAction: isRegister ? TextInputAction.next : TextInputAction.done,
+                            textInputAction: TextInputAction.done,
                             decoration: const InputDecoration(
                               labelText: 'Password',
                               hintText: 'at least 8 characters',
@@ -107,26 +107,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                             onChanged: (_) => appState.clearAuthError(),
                             onSubmitted: (_) {
-                              if (!appState.authLoading && !isRegister) {
-                                _submitLogin(appState);
+                              if (!appState.authLoading) {
+                                if (isRegister) {
+                                  _submitRegister(appState);
+                                } else {
+                                  _submitLogin(appState);
+                                }
                               }
                             },
                           ),
-                          if (isRegister) ...<Widget>[
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _displayNameController,
-                              textCapitalization: TextCapitalization.words,
-                              autocorrect: false,
-                              textInputAction: TextInputAction.done,
-                              decoration: const InputDecoration(
-                                labelText: 'Display name',
-                                hintText: 'shown on leaderboards',
-                                border: OutlineInputBorder(),
-                              ),
-                              onChanged: (_) => appState.clearAuthError(),
-                            ),
-                          ],
                           if (appState.authError != null) ...<Widget>[
                             const SizedBox(height: 12),
                             Text(
@@ -171,7 +160,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     appState.register(
       username: _usernameController.text,
       password: _passwordController.text,
-      displayName: _displayNameController.text,
     );
   }
 }

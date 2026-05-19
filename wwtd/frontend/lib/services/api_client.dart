@@ -46,7 +46,6 @@ class ApiClient {
   Future<UserProfile> register({
     required String username,
     required String password,
-    required String displayName,
   }) async {
     final http.Response response = await _client.post(
       _uri('/api/auth/register'),
@@ -54,7 +53,6 @@ class ApiClient {
       body: jsonEncode(<String, String>{
         'username': username.trim(),
         'password': password,
-        'display_name': displayName.trim(),
       }),
     );
     if (response.statusCode != 201) {
