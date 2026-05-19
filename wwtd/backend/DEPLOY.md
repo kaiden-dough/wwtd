@@ -159,9 +159,51 @@ curl -X POST https://YOUR-SERVICE.onrender.com/api/auth/send-code \
 
 ## 3. Vercel (Flutter web) — after Render works
 
-You need the **Render URL** from step 2.5 (no trailing slash). Vercel does not include Flutter — build on your PC, then upload `build/web`.
+You need the **Render URL** from step 2.5 (no trailing slash).
 
-### 3.1 Build the web app
+### 3.0 Git auto-deploy (recommended)
+
+Connect GitHub so every push to `main` rebuilds and deploys the Flutter web app.
+
+1. Push this repo to GitHub (if you have not already).
+2. Open [vercel.com/new](https://vercel.com/new) → **Import Git Repository** → authorize GitHub → select your repo.
+3. **Configure Project**:
+
+   | Setting | Value |
+   |---------|--------|
+   | **Root Directory** | `wwtd/frontend` (Edit → set before deploy) |
+   | **Framework Preset** | Other |
+   | **Build Command** | (leave empty — uses `vercel.json`) |
+   | **Output Directory** | (leave empty — uses `vercel.json`) |
+
+4. **Environment Variables** (add before first deploy):
+
+   | Name | Value | Environments |
+   |------|--------|----------------|
+   | `API_BASE_URL` | `https://YOUR-SERVICE.onrender.com` (no trailing slash) | Production, Preview, Development |
+
+5. Click **Deploy**. The first build installs Flutter on Vercel’s builder (~3–6 minutes). Later deploys are faster.
+6. After deploy, note your URL (e.g. `https://kaidendo.vercel.app`) for step 4 (`CORS_ORIGINS`).
+
+**Already have a Vercel project (CLI / drag-and-drop)?**
+
+1. [vercel.com/dashboard](https://vercel.com/dashboard) → your project → **Settings** → **Git** → **Connect Git Repository**.
+2. Pick the same repo and branch (`main`).
+3. Confirm **Root Directory** = `wwtd/frontend` under **Settings → General**.
+4. Add `API_BASE_URL` under **Settings → Environment Variables** if missing.
+5. **Deployments** → **Redeploy** (or push a commit).
+
+**Preview deploys:** Each PR gets a preview URL. Add those origins to Render `CORS_ORIGINS` if you test login on previews:
+
+```text
+https://kaidendo.vercel.app,https://your-project-*.vercel.app
+```
+
+(Render does not support wildcards in `CORS_ORIGINS`; list specific preview URLs or use `*` only while testing.)
+
+---
+
+### 3.1 Build the web app locally (optional)
 
 ```powershell
 cd wwtd\frontend
@@ -219,14 +261,9 @@ cd build\web
 vercel --prod
 ```
 
-### 3.4 Alternative: Vercel dashboard (import repo)
+### 3.4 Manual static deploy (no Git)
 
-If you prefer the UI without CLI:
-
-1. Build locally (step 3.1) first — required.
-2. [vercel.com/new](https://vercel.com/new) → add project → **Deploy** by dragging the **contents** of `build/web` into [vercel.com/drop](https://vercel.com/new) (static deploy), **or** use CLI as above (simpler for updates).
-
-Do not point Vercel’s build at `flutter build` unless you add your own CI — the default Vercel builder has no Flutter SDK.
+Drag-and-drop only: build locally (step 3.1), then upload the **contents** of `build/web` at [vercel.com/new](https://vercel.com/new). No auto-deploy on push. Prefer **3.0** for Git integration.
 
 ---
 
