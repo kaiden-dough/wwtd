@@ -95,6 +95,8 @@ Fill in exactly:
 
 Leave **Docker** off. Do not use Blueprint for this setup.
 
+**Python version:** Add env var `PYTHON_VERSION` = `3.12.8` (or rely on `runtime.txt` in `wwtd/backend`). Do **not** use 3.14 — some packages lack wheels yet.
+
 ### 2.3 Environment variables
 
 Scroll to **Environment Variables** → **Add Environment Variable** for each:
@@ -301,7 +303,7 @@ CORS_ORIGINS=https://your-app.vercel.app
 `wwtd/backend/.env` (never commit):
 
 ```env
-DATABASE_URL=<same as Render>
+DATABASE_URL=postgresql://postgres.axffuusaaathvketrgzf:WhatWouldTheyDo@aws-1-us-west-1.pooler.supabase.com:6543/postgres
 JWT_SECRET=dev-secret
 EXPOSE_DEV_OTP=true
 ```
