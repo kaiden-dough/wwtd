@@ -23,6 +23,11 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "*"
-      # Optional: attach a Render Disk mounted at /var/data, then set:
+      # Supabase: Project Settings → Database → Connection string (URI). Use Transaction pooler (port 6543) on Render.
+      - key: DATABASE_URL
+        sync: false
+      - key: EXPOSE_DEV_OTP
+        value: "false"
+      # Local / fallback only — leave DATABASE_URL set in production instead.
       # - key: SQLITE_PATH
       #   value: /var/data/wwtd.db

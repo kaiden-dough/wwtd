@@ -158,6 +158,9 @@ def _migrate_legacy_markets(conn) -> None:
 
 
 def run_migrations(engine: Engine) -> None:
+    # Legacy SQLite-only migrations (old markets → rooms). Fresh Supabase DBs use SQLAlchemy create_all.
+    if engine.dialect.name != "sqlite":
+        return
     with engine.begin() as conn:
         if _table_exists(conn, "profiles") and "balance_points" not in _column_names(conn, "profiles"):
             conn.execute(text("ALTER TABLE profiles ADD COLUMN balance_points REAL NOT NULL DEFAULT 500"))

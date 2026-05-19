@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # When SMTP is not set, return the OTP in the API response (local dev only).
     expose_dev_otp: bool = True
 
+    # Supabase / Postgres: set DATABASE_URL to the Supabase connection string (Session or Transaction pooler).
+    # Leave unset for local SQLite at sqlite_path.
+    database_url: str = ""
     sqlite_path: Path = _DEFAULT_DB
     cors_origins: str = "*"
 
