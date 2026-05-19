@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wwtd/config/api_config.dart';
-import 'package:wwtd/data/mock_data.dart';
+import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/leaderboard_entry.dart';
+import 'package:wwtd/models/room_leaderboard.dart';
 import 'package:wwtd/models/prediction_market.dart';
+import 'package:wwtd/models/user_bet.dart';
 import 'package:wwtd/models/user_profile.dart';
 import 'package:wwtd/services/api_client.dart';
 
@@ -17,16 +19,19 @@ class AppState extends ChangeNotifier {
 
   final ApiClient _api;
 
-  String _selectedPerson = samplePeople.first;
-  int _selectedTabIndex = 0;
+  String? _selectedRoomId;
   double _betAmount = 10;
-  double _userBalance = 500;
-  final List<PredictionMarket> _markets = List<PredictionMarket>.from(marketData);
-  final List<LeaderboardEntry> _leaderboard = List<LeaderboardEntry>.from(leaderboardData);
+  List<GameRoom> _rooms = <GameRoom>[];
+  List<PredictionMarket> _questions = <PredictionMarket>[];
+  List<RoomLeaderboard> _roomLeaderboards = <RoomLeaderboard>[];
+  List<UserBet> _myBets = <UserBet>[];
 
   UserProfile? _user;
+  bool _sessionReady = false;
   bool _authLoading = false;
+  bool _gameLoading = false;
   String? _authError;
+  String? _gameError;
   bool _codeSent = false;
   String _pendingEmail = '';
   String? _devCode;
@@ -34,50 +39,145 @@ class AppState extends ChangeNotifier {
 
   UserProfile? get user => _user;
   bool get isLoggedIn => _user != null;
+  bool get sessionReady => _sessionReady;
+  bool get needsDisplayName {
+    final String? name = _user?.displayName;
+    return isLoggedIn && (name == null || name.trim().isEmpty);
+  }
+
+  bool get pendingDisplayNameSetup => _pendingDisplayNameSetup;
+  bool _pendingDisplayNameSetup = false;
   bool get authLoading => _authLoading == true;
+  bool get gameLoading => _gameLoading == true;
   String? get authError => _authError;
+  String? get gameError => _gameError;
   bool get codeSent => _codeSent == true;
   String get pendingEmail => _pendingEmail;
   String? get devCode => _devCode;
   String? get sendCodeMessage => _sendCodeMessage;
+  List<UserBet> get myBets => _myBets;
 
-  String get selectedPerson => _selectedPerson;
-  int get selectedTabIndex => _selectedTabIndex;
-  double get betAmount => _betAmount;
-  double get userBalance => _userBalance;
-  List<LeaderboardEntry> get leaderboard => _leaderboard;
-  List<String> get people {
-    final List<String> ordered = <String>[];
-    for (final PredictionMarket market in _markets) {
-      if (!ordered.contains(market.person)) {
-        ordered.add(market.person);
+  List<GameRoom> get rooms => _rooms;
+  List<PredictionMarket> get questions => _questions;
+
+  GameRoom? get selectedRoom {
+    if (_selectedRoomId == null) {
+      return null;
+    }
+    for (final GameRoom room in _rooms) {
+      if (room.id == _selectedRoomId) {
+        return room;
       }
     }
-    return ordered;
+    return null;
   }
 
-  Future<void> _init() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? token = prefs.getString(_tokenKey);
-    if (token == null || token.isEmpty) {
-      return;
+  String get selectedPerson => selectedRoom?.personName ?? 'they';
+  List<PredictionMarket> get displayMarkets => _questions;
+  double get betAmount => _betAmount;
+
+  /// Bets for the currently selected room only.
+  List<UserBet> get roomBets {
+    if (_selectedRoomId == null) {
+      return <UserBet>[];
     }
-    _api.setToken(token);
-    await _restoreSession(prefs);
+    return _myBets.where((UserBet b) => b.roomId == _selectedRoomId).toList();
+  }
+  double get userBalance => _user?.balancePoints ?? 0;
+  List<RoomLeaderboard> get roomLeaderboards => _roomLeaderboards;
+
+  List<LeaderboardEntry> get leaderboard {
+    if (_selectedRoomId == null) {
+      return <LeaderboardEntry>[];
+    }
+    for (final RoomLeaderboard board in _roomLeaderboards) {
+      if (board.roomId == _selectedRoomId) {
+        return board.entries;
+      }
+    }
+    return <LeaderboardEntry>[];
+  }
+  Future<void> _init() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString(_tokenKey);
+      if (token != null && token.isNotEmpty) {
+        _api.setToken(token);
+        await _restoreSession(prefs);
+      }
+    } finally {
+      _sessionReady = true;
+      notifyListeners();
+    }
   }
 
   Future<void> _restoreSession(SharedPreferences prefs) async {
     _setAuthLoading(true);
     try {
-      _user = await _api.fetchMe();
+      await _refreshGameData();
       _authError = null;
     } catch (_) {
       await prefs.remove(_tokenKey);
       _api.setToken(null);
       _user = null;
+      _clearGameData();
     } finally {
       _setAuthLoading(false);
     }
+  }
+
+  Future<void> _refreshGameData() async {
+    _setGameLoading(true);
+    try {
+      final UserProfile profile = await _api.fetchMe();
+      final List<GameRoom> rooms = await _api.fetchRooms();
+      final List<RoomLeaderboard> board = await _api.fetchLeaderboard();
+      final List<UserBet> bets = await _api.fetchMyBets();
+      _user = profile;
+      _rooms = rooms;
+      _roomLeaderboards = board;
+      _myBets = bets;
+      _gameError = null;
+      _ensureSelectedRoomValid();
+      await _loadQuestionsForSelectedRoom();
+    } finally {
+      _setGameLoading(false);
+    }
+  }
+
+  void _clearGameData() {
+    _rooms = <GameRoom>[];
+    _questions = <PredictionMarket>[];
+    _roomLeaderboards = <RoomLeaderboard>[];
+    _myBets = <UserBet>[];
+    _selectedRoomId = null;
+  }
+
+  void _ensureSelectedRoomValid() {
+    if (_rooms.isEmpty) {
+      _selectedRoomId = null;
+      return;
+    }
+    if (_selectedRoomId == null || !_rooms.any((GameRoom r) => r.id == _selectedRoomId)) {
+      _selectedRoomId = _rooms.first.id;
+    }
+  }
+
+  Future<void> _loadQuestionsForSelectedRoom() async {
+    if (_selectedRoomId == null) {
+      _questions = <PredictionMarket>[];
+      return;
+    }
+    _questions = await _api.fetchRoomQuestions(_selectedRoomId!);
+  }
+
+  Future<void> selectRoom(String roomId) async {
+    if (_selectedRoomId == roomId) {
+      return;
+    }
+    _selectedRoomId = roomId;
+    await _loadQuestionsForSelectedRoom();
+    notifyListeners();
   }
 
   Future<void> sendLoginCode(String email) async {
@@ -101,9 +201,7 @@ class AppState extends ChangeNotifier {
     } on ApiException catch (e) {
       _authError = e.message;
     } on http.ClientException {
-      _authError =
-          'Cannot reach the API at ${ApiConfig.baseUrl}. Start the server with: '
-          'python -m uvicorn app.main:app --reload --port 8000';
+      _authError = _offlineMessage;
     } catch (e) {
       _authError = 'Request failed: $e';
     } finally {
@@ -144,14 +242,55 @@ class AppState extends ChangeNotifier {
       _pendingEmail = '';
       _devCode = null;
       _sendCodeMessage = null;
+      _pendingDisplayNameSetup = needsDisplayName;
+      if (!_pendingDisplayNameSetup) {
+        await _refreshGameData();
+      }
     } on ApiException catch (e) {
       _authError = e.message;
     } on http.ClientException {
-      _authError =
-          'Cannot reach the API at ${ApiConfig.baseUrl}. Start the server with: '
-          'python -m uvicorn app.main:app --reload --port 8000';
+      _authError = _offlineMessage;
     } catch (e) {
       _authError = 'Sign-in failed: $e';
+    } finally {
+      _setAuthLoading(false);
+    }
+  }
+
+  Future<bool> completeDisplayName(String displayName) async {
+    final String name = displayName.trim();
+    if (name.isEmpty) {
+      _authError = 'Enter a display name';
+      notifyListeners();
+      return false;
+    }
+    if (!isLoggedIn) {
+      return false;
+    }
+
+    _setAuthLoading(true);
+    _authError = null;
+    notifyListeners();
+
+    try {
+      _user = await _api.updateDisplayName(name);
+      _pendingDisplayNameSetup = false;
+      await _refreshGameData();
+      _authError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _authError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _authError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _authError = 'Could not save name: $e';
+      notifyListeners();
+      return false;
     } finally {
       _setAuthLoading(false);
     }
@@ -162,11 +301,14 @@ class AppState extends ChangeNotifier {
     await prefs.remove(_tokenKey);
     _api.setToken(null);
     _user = null;
+    _pendingDisplayNameSetup = false;
     _codeSent = false;
     _pendingEmail = '';
     _devCode = null;
     _sendCodeMessage = null;
     _authError = null;
+    _gameError = null;
+    _clearGameData();
     notifyListeners();
   }
 
@@ -187,29 +329,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearGameError() {
+    if (_gameError == null) {
+      return;
+    }
+    _gameError = null;
+    notifyListeners();
+  }
+
   bool _isValidEmail(String email) {
     return RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email);
   }
+
+  String get _offlineMessage =>
+      'Cannot reach the API at ${ApiConfig.baseUrl}. Start the server with: '
+      'python -m uvicorn app.main:app --reload --port 8000';
 
   void _setAuthLoading(bool value) {
     _authLoading = value;
     notifyListeners();
   }
 
-  void updateTab(int index) {
-    if (_selectedTabIndex == index) {
-      return;
-    }
-    _selectedTabIndex = index;
-    notifyListeners();
-  }
-
-  void updateSelectedPerson(String person) {
-    if (_selectedPerson == person) {
-      return;
-    }
-    _selectedPerson = person;
-    _refreshMarketsIfSelectionMissing();
+  void _setGameLoading(bool value) {
+    _gameLoading = value;
     notifyListeners();
   }
 
@@ -220,18 +362,6 @@ class AppState extends ChangeNotifier {
     }
     _betAmount = sanitized;
     notifyListeners();
-  }
-
-  List<PredictionMarket> marketsForSelectedPerson() {
-    return _markets.where((PredictionMarket m) => m.person == _selectedPerson).toList();
-  }
-
-  Map<String, List<PredictionMarket>> groupedMarkets() {
-    final Map<String, List<PredictionMarket>> grouped = <String, List<PredictionMarket>>{};
-    for (final PredictionMarket market in marketsForSelectedPerson()) {
-      grouped.putIfAbsent(market.dateLabel, () => <PredictionMarket>[]).add(market);
-    }
-    return grouped;
   }
 
   double expectedPayout({
@@ -248,88 +378,245 @@ class AppState extends ChangeNotifier {
     return totalPoolAfterBet * (bet / sideAfterBet);
   }
 
-  void placeBet({
+  Future<bool> placeBet({
     required String marketId,
     required bool isYes,
-  }) {
-    if (_betAmount > _userBalance) {
-      return;
+  }) async {
+    if (!isLoggedIn) {
+      _gameError = 'Sign in to place bets';
+      notifyListeners();
+      return false;
+    }
+    if (_betAmount > userBalance) {
+      _gameError = 'Not enough points';
+      notifyListeners();
+      return false;
     }
 
-    final int marketIndex = _markets.indexWhere((PredictionMarket m) => m.id == marketId);
-    if (marketIndex == -1) {
-      return;
+    try {
+      final PredictionMarket updated = await _api.placeBet(
+        marketId: marketId,
+        isYes: isYes,
+        amount: _betAmount,
+      );
+      final int index = _questions.indexWhere((PredictionMarket m) => m.id == marketId);
+      if (index != -1) {
+        _questions[index] = updated;
+      }
+      _user = await _api.fetchMe();
+      _myBets = await _api.fetchMyBets();
+      _roomLeaderboards = await _api.fetchLeaderboard();
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Bet failed: $e';
+      notifyListeners();
+      return false;
     }
-
-    final PredictionMarket market = _markets[marketIndex];
-    final PredictionMarket updated = isYes
-        ? market.copyWith(
-            yesWageredPoints: market.yesWageredPoints + _betAmount,
-            userYesBet: market.userYesBet + _betAmount,
-          )
-        : market.copyWith(
-            noWageredPoints: market.noWageredPoints + _betAmount,
-            userNoBet: market.userNoBet + _betAmount,
-          );
-
-    _markets[marketIndex] = updated;
-    _userBalance -= _betAmount;
-    notifyListeners();
   }
 
-  void createMarket({
-    required String person,
-    required String question,
-    required String dateLabel,
-    required bool creatorPickedYes,
-    required double creatorStake,
-  }) {
-    final String normalizedPerson = person.trim();
-    final String normalizedQuestion = question.trim();
-    if (normalizedPerson.isEmpty || normalizedQuestion.isEmpty) {
-      return;
+  Future<GameRoom?> joinRoom(String joinCode) async {
+    if (!isLoggedIn) {
+      _gameError = 'Sign in to join a room';
+      notifyListeners();
+      return null;
     }
+    final String code = joinCode.trim().toUpperCase();
+    if (code.length < 4) {
+      _gameError = 'Enter a valid join code';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final GameRoom room = await _api.joinRoom(code);
+      final int existing = _rooms.indexWhere((GameRoom r) => r.id == room.id);
+      if (existing == -1) {
+        _rooms.insert(0, room);
+      } else {
+        _rooms[existing] = room;
+      }
+      _selectedRoomId = room.id;
+      await _loadQuestionsForSelectedRoom();
+      _user = await _api.fetchMe();
+      _myBets = await _api.fetchMyBets();
+      _gameError = null;
+      notifyListeners();
+      return room;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return null;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _gameError = 'Join failed: $e';
+      notifyListeners();
+      return null;
+    }
+  }
 
-    final double startingPot = creatorStake.clamp(1, 100000).toDouble();
-    final PredictionMarket market = PredictionMarket(
-      id: 'u-${DateTime.now().microsecondsSinceEpoch}',
-      person: normalizedPerson,
-      question: normalizedQuestion,
-      dateLabel: dateLabel,
-      yesWageredPoints: creatorPickedYes ? startingPot : 0,
-      noWageredPoints: creatorPickedYes ? 0 : startingPot,
-    );
-    _markets.insert(0, market);
-    _selectedPerson = normalizedPerson;
-    notifyListeners();
+  Future<GameRoom?> createRoom(String person) async {
+    if (!isLoggedIn) {
+      _gameError = 'Sign in to create a room';
+      notifyListeners();
+      return null;
+    }
+    final String normalizedPerson = person.trim();
+    if (normalizedPerson.isEmpty) {
+      return null;
+    }
+    try {
+      final GameRoom room = await _api.createRoom(normalizedPerson);
+      _rooms.insert(0, room);
+      _selectedRoomId = room.id;
+      _questions = <PredictionMarket>[];
+      _gameError = null;
+      notifyListeners();
+      return room;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return null;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _gameError = 'Could not create room: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<PredictionMarket?> addQuestion(String questionText) async {
+    if (!isLoggedIn || _selectedRoomId == null) {
+      _gameError = 'Select a room first';
+      notifyListeners();
+      return null;
+    }
+    final String q = questionText.trim();
+    if (q.isEmpty) {
+      return null;
+    }
+    try {
+      final PredictionMarket question = await _api.addQuestion(roomId: _selectedRoomId!, question: q);
+      _questions.insert(0, question);
+      _gameError = null;
+      notifyListeners();
+      return question;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return null;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _gameError = 'Could not add question: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> deleteQuestion(String questionId) async {
+    if (!isLoggedIn || _selectedRoomId == null) {
+      return false;
+    }
+    if (!(selectedRoom?.isModerator ?? false)) {
+      _gameError = 'Only the moderator can delete questions';
+      notifyListeners();
+      return false;
+    }
+    try {
+      await _api.deleteQuestion(roomId: _selectedRoomId!, questionId: questionId);
+      _questions.removeWhere((PredictionMarket q) => q.id == questionId);
+      _user = await _api.fetchMe();
+      _myBets = await _api.fetchMyBets();
+      _roomLeaderboards = await _api.fetchLeaderboard();
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Delete failed: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> resolveMarket({
+    required String marketId,
+    required bool winningYes,
+  }) async {
+    if (!isLoggedIn) {
+      return false;
+    }
+    try {
+      final PredictionMarket updated = await _api.resolveMarket(
+        marketId: marketId,
+        winningYes: winningYes,
+      );
+      final int index = _questions.indexWhere((PredictionMarket m) => m.id == marketId);
+      if (index != -1) {
+        _questions[index] = updated;
+      }
+      _user = await _api.fetchMe();
+      _myBets = await _api.fetchMyBets();
+      _roomLeaderboards = await _api.fetchLeaderboard();
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Resolve failed: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  bool canResolveMarket(PredictionMarket market) {
+    return isLoggedIn && market.isOpen && (selectedRoom?.isModerator ?? false);
+  }
+
+  bool canDeleteQuestion(PredictionMarket market) {
+    return isLoggedIn && (selectedRoom?.isModerator ?? false);
   }
 
   int currentUserRank() {
-    final String name = _user?.displayName ?? currentUsername;
-    final int index = _leaderboard.indexWhere((LeaderboardEntry entry) => entry.username == name);
+    final List<LeaderboardEntry> entries = leaderboard;
+    if (_user == null) {
+      return entries.isEmpty ? 0 : entries.length;
+    }
+    final int index = entries.indexWhere((LeaderboardEntry e) => e.userId == _user!.id);
     if (index == -1) {
-      return _leaderboard.length;
+      return entries.isEmpty ? 0 : entries.length;
     }
     return index + 1;
-  }
-
-  void _refreshMarketsIfSelectionMissing() {
-    final bool hasLoadedMarketsForSelection = _markets.any(
-      (PredictionMarket market) => market.person == _selectedPerson,
-    );
-    if (hasLoadedMarketsForSelection) {
-      return;
-    }
-
-    final bool hasSourceMarketsForSelection = marketData.any(
-      (PredictionMarket market) => market.person == _selectedPerson,
-    );
-    if (!hasSourceMarketsForSelection) {
-      return;
-    }
-
-    _markets
-      ..clear()
-      ..addAll(List<PredictionMarket>.from(marketData));
   }
 }

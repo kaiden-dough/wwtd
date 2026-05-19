@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:wwtd/providers/app_state.dart';
 import 'package:wwtd/screens/account_screen.dart';
 import 'package:wwtd/screens/betting_screen.dart';
-import 'package:wwtd/screens/leaderboard_screen.dart';
+import 'package:wwtd/screens/login_screen.dart';
 
 void main() {
   runApp(
@@ -37,8 +37,30 @@ class MainApp extends StatelessWidget {
           shadowColor: Colors.black12,
         ),
       ),
-      home: const AppShell(),
+      home: const AppGate(),
     );
+  }
+}
+
+/// Shows login until authenticated; restores saved session on launch.
+class AppGate extends StatelessWidget {
+  const AppGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final AppState appState = context.watch<AppState>();
+
+    if (!appState.sessionReady || (appState.authLoading && !appState.isLoggedIn)) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!appState.isLoggedIn || appState.needsDisplayName) {
+      return const LoginScreen();
+    }
+
+    return const AppShell();
   }
 }
 
@@ -48,51 +70,51 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    const List<Widget> pages = <Widget>[
-      BettingScreen(),
-      LeaderboardScreen(),
-      AccountScreen(),
-    ];
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text(
-          'What would ${appState.selectedPerson} do?',
+          appState.selectedRoom != null
+              ? 'What would ${appState.selectedPerson} do?'
+              : 'What Would They Do?',
           style: const TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 20,
           ),
         ),
         centerTitle: false,
-      ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: KeyedSubtree(
-          key: ValueKey<int>(appState.selectedTabIndex),
-          child: pages[appState.selectedTabIndex],
-        ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: appState.selectedTabIndex,
-        onDestinationSelected: appState.updateTab,
-        destinations: const <NavigationDestination>[
-          NavigationDestination(
-            icon: Icon(Icons.candlestick_chart_rounded),
-            label: 'Betting',
+        actions: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F1FE),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF165AB0).withValues(alpha: 0.25)),
+                ),
+                child: Text(
+                  '${appState.userBalance.toStringAsFixed(0)} pts',
+                  style: const TextStyle(
+                    color: Color(0xFF1454A7),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.leaderboard_rounded),
-            label: 'Leaderboard',
+          IconButton(
+            tooltip: 'Account',
+            onPressed: () => showAccountSheet(context),
+            icon: const Icon(Icons.person_rounded, color: Color(0xFF1454A7)),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Account',
-          ),
+          const SizedBox(width: 4),
         ],
       ),
+      body: const BettingScreen(),
     );
   }
 }

@@ -25,9 +25,10 @@ class Profile(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    balance_points: Mapped[float] = mapped_column(Float, nullable=False, default=500.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    markets_created: Mapped[list["Market"]] = relationship(back_populates="creator")
+    rooms_created: Mapped[list["Room"]] = relationship(back_populates="moderator")
     bets: Mapped[list["Bet"]] = relationship(back_populates="user")
 
 
@@ -39,34 +40,64 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    markets: Mapped[list["Market"]] = relationship(back_populates="person")
+    rooms: Mapped[list["Room"]] = relationship(back_populates="person")
 
 
-class Market(Base):
-    __tablename__ = "markets"
+class Room(Base):
+    __tablename__ = "rooms"
+    __table_args__ = (UniqueConstraint("join_code", name="uq_rooms_join_code"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    join_code: Mapped[str] = mapped_column(String(8), nullable=False, unique=True)
     person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="RESTRICT"), nullable=False)
-    question: Mapped[str] = mapped_column(Text, nullable=False)
-    date_label: Mapped[str] = mapped_column(String(64), nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    person: Mapped[Person] = relationship(back_populates="markets")
-    creator: Mapped[Profile] = relationship(back_populates="markets_created")
-    bets: Mapped[list["Bet"]] = relationship(back_populates="market", cascade="all, delete-orphan")
+    person: Mapped[Person] = relationship(back_populates="rooms")
+    moderator: Mapped[Profile] = relationship(back_populates="rooms_created")
+    members: Mapped[list["RoomMember"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+    questions: Mapped[list["Question"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+
+
+class RoomMember(Base):
+    __tablename__ = "room_members"
+    __table_args__ = (UniqueConstraint("room_id", "user_id", name="uq_room_member"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    room: Mapped[Room] = relationship(back_populates="members")
+    user: Mapped[Profile] = relationship()
+
+
+class Question(Base):
+    __tablename__ = "questions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    winning_side: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    room: Mapped[Room] = relationship(back_populates="questions")
+    author: Mapped[Profile] = relationship(foreign_keys=[created_by])
+    bets: Mapped[list["Bet"]] = relationship(back_populates="question", cascade="all, delete-orphan")
 
 
 class Bet(Base):
     __tablename__ = "bets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    market_id: Mapped[str] = mapped_column(ForeignKey("markets.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[str] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False)
     side: Mapped[str] = mapped_column(String(8), nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
+    payout_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    market: Mapped[Market] = relationship(back_populates="bets")
+    question: Mapped[Question] = relationship(back_populates="bets")
     user: Mapped[Profile] = relationship(back_populates="bets")

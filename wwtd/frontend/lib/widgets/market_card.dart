@@ -18,6 +18,9 @@ class MarketCard extends StatelessWidget {
     final double betAmount = appState.betAmount;
     final double yesPayout = appState.expectedPayout(market: market, isYes: true, bet: betAmount);
     final double noPayout = appState.expectedPayout(market: market, isYes: false, bet: betAmount);
+    final bool canBet = appState.isLoggedIn && market.isOpen;
+    final bool canResolve = appState.canResolveMarket(market);
+    final bool canDelete = appState.canDeleteQuestion(market);
 
     return Card(
       elevation: 1,
@@ -59,32 +62,89 @@ class MarketCard extends StatelessWidget {
               'Total pot: ${_formatPoints(market.totalPot)} points',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF526170)),
             ),
+            if (market.isResolved) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: const Color(0xFF1454A7),
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ],
+            if (market.userYesBet > 0 || market.userNoBet > 0) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                'Your bets — Yes: ${_formatPoints(market.userYesBet)} | No: ${_formatPoints(market.userNoBet)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+              ),
+            ],
             const SizedBox(height: 14),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF2C9B67),
-                      foregroundColor: Colors.white,
+            if (canBet)
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2C9B67),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => _placeBet(context, isYes: true),
+                      child: const Text('Bet Yes'),
                     ),
-                    onPressed: () => context.read<AppState>().placeBet(marketId: market.id, isYes: true),
-                    child: const Text('Bet Yes'),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonal(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFF7DEDB),
-                      foregroundColor: const Color(0xFFB24338),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonal(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFF7DEDB),
+                        foregroundColor: const Color(0xFFB24338),
+                      ),
+                      onPressed: () => _placeBet(context, isYes: false),
+                      child: const Text('Bet No'),
                     ),
-                    onPressed: () => context.read<AppState>().placeBet(marketId: market.id, isYes: false),
-                    child: const Text('Bet No'),
                   ),
-                ),
-              ],
-            ),
+                ],
+              )
+            else if (!appState.isLoggedIn)
+              Text(
+                'Sign in to bet',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+              ),
+            if (canResolve) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                'Moderator: pick the outcome to pay winners',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: const Color(0xFF607182)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _resolve(context, winningYes: true),
+                      child: const Text('Resolve Yes'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _resolve(context, winningYes: false),
+                      child: const Text('Resolve No'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (canDelete) ...<Widget>[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => _confirmDelete(context),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFFB24338)),
+                label: const Text('Delete question (refund all bets)'),
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
@@ -107,6 +167,80 @@ class MarketCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _placeBet(BuildContext context, {required bool isYes}) async {
+    final AppState appState = context.read<AppState>();
+    final bool ok = await appState.placeBet(marketId: market.id, isYes: isYes);
+    if (!context.mounted) {
+      return;
+    }
+    final String? message = appState.gameError;
+    if (!ok && message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } else if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bet placed')),
+      );
+    }
+  }
+
+  Future<void> _resolve(BuildContext context, {required bool winningYes}) async {
+    final AppState appState = context.read<AppState>();
+    final bool ok = await appState.resolveMarket(marketId: market.id, winningYes: winningYes);
+    if (!context.mounted) {
+      return;
+    }
+    final String? message = appState.gameError;
+    if (!ok && message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } else if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Market resolved — ${winningYes ? 'Yes' : 'No'} wins')),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete question?'),
+          content: const Text(
+            'All bets on this question will be refunded to players. This cannot be undone.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB24338)),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete & refund'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+    final AppState appState = context.read<AppState>();
+    final bool ok = await appState.deleteQuestion(market.id);
+    if (!context.mounted) {
+      return;
+    }
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Question deleted — bets refunded')),
+      );
+    } else if (appState.gameError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(appState.gameError!)),
+      );
+    }
   }
 
   Widget _oddsGraph(BuildContext context, PredictionMarket market) {

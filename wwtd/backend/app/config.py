@@ -8,6 +8,7 @@ _DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "wwtd.db"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    starting_balance_points: float = 500.0
     jwt_secret: str = "dev-change-me"
     jwt_expire_days: int = 30
     otp_expire_minutes: int = 10

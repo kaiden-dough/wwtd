@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
 import 'package:wwtd/widgets/market_card.dart';
+import 'package:wwtd/widgets/room_leaderboard_section.dart';
 
 class BettingScreen extends StatelessWidget {
   const BettingScreen({super.key});
@@ -10,331 +13,410 @@ class BettingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    final Map<String, List<PredictionMarket>> grouped = appState.groupedMarkets();
+    final GameRoom? room = appState.selectedRoom;
+    final List<PredictionMarket> displayMarkets = appState.displayMarkets;
 
-    return SafeArea(
-      child: Stack(
-        children: <Widget>[
-          Center(
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Widget mainColumn = ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          children: _buildMainChildren(context, appState, room, displayMarkets),
+        );
+
+        if (room == null) {
+          return Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: mainColumn,
+            ),
+          );
+        }
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            child: SizedBox(
+              height: constraints.maxHeight,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    'Markets',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 14),
-                  _PeopleSelector(
-                    people: appState.people,
-                    selectedPerson: appState.selectedPerson,
-                    onChanged: appState.updateSelectedPerson,
-                  ),
-                  const SizedBox(height: 14),
-                  _BetAmountField(
-                    value: appState.betAmount,
-                    onChanged: appState.updateBetAmount,
-                  ),
-                  const SizedBox(height: 14),
-                  for (final String dateLabel in grouped.keys) ...<Widget>[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10, top: 8),
-                      child: Text(
-                        dateLabel,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF334155),
-                            ),
-                      ),
+                  Expanded(child: mainColumn),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 280,
+                    height: constraints.maxHeight,
+                    child: const Padding(
+                      padding: EdgeInsets.only(top: 12, right: 14, bottom: 12),
+                      child: RoomLeaderboardSection(),
                     ),
-                    ...grouped[dateLabel]!.map<Widget>((PredictionMarket market) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: MarketCard(market: market),
-                      );
-                    }),
-                  ],
-                  const SizedBox(height: 88),
+                  ),
                 ],
               ),
             ),
           ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: FloatingActionButton.small(
-              onPressed: () => _showCreateMarketSheet(context, appState),
-              tooltip: 'Add market',
-              child: const Icon(Icons.add),
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildMainChildren(
+    BuildContext context,
+    AppState appState,
+    GameRoom? room,
+    List<PredictionMarket> displayMarkets,
+  ) {
+    return <Widget>[
+      Text(
+        'Room',
+        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        children: <Widget>[
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _showJoinSheet(context, appState),
+              icon: const Icon(Icons.vpn_key_outlined, size: 18),
+              label: const Text('Join code'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () => _showCreateRoomSheet(context, appState),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Create room'),
             ),
           ),
         ],
       ),
-    );
+      if (appState.rooms.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 14),
+        _RoomPicker(
+          rooms: appState.rooms,
+          selectedId: appState.selectedRoom?.id,
+          onChanged: (String id) => appState.selectRoom(id),
+        ),
+      ],
+      if (room != null) ...<Widget>[
+        const SizedBox(height: 10),
+        if (room.isModerator) ...<Widget>[
+          Text(
+            'Join code: ${room.joinCode} — share so friends can join',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF1454A7),
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        OutlinedButton.icon(
+          onPressed: () => _showAddQuestionSheet(context, appState),
+          icon: const Icon(Icons.help_outline, size: 18),
+          label: const Text('Add a question'),
+        ),
+        const SizedBox(height: 14),
+        _BetAmountField(
+          value: appState.betAmount,
+          onChanged: appState.updateBetAmount,
+        ),
+        const SizedBox(height: 14),
+      ],
+      if (room == null)
+        Padding(
+          padding: const EdgeInsets.only(top: 24),
+          child: Text(
+            'Create a room and share the join code, or enter a code to join someone else\'s.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF607182)),
+          ),
+        )
+      else if (displayMarkets.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Text(
+            'No questions yet. Anyone in the room can add one.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF607182)),
+          ),
+        )
+      else
+        ...displayMarkets.map(
+          (PredictionMarket market) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: MarketCard(market: market),
+          ),
+        ),
+      const SizedBox(height: 24),
+    ];
   }
 }
 
-Future<void> _showCreateMarketSheet(BuildContext context, AppState appState) async {
+Future<void> _showJoinSheet(BuildContext context, AppState appState) async {
+  final TextEditingController controller = TextEditingController();
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (BuildContext sheetContext) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: 16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'Join room',
+              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                LengthLimitingTextInputFormatter(8),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Join code',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                final GameRoom? joined = await appState.joinRoom(controller.text);
+                if (!sheetContext.mounted) {
+                  return;
+                }
+                if (joined != null) {
+                  Navigator.of(sheetContext).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Joined room for ${joined.personName}')),
+                  );
+                } else if (appState.gameError != null) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(content: Text(appState.gameError!)),
+                  );
+                }
+              },
+              child: const Text('Join'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  controller.dispose();
+}
+
+Future<void> _showCreateRoomSheet(BuildContext context, AppState appState) async {
+  final TextEditingController personController = TextEditingController();
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (BuildContext sheetContext) {
       return Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(sheetContext).bottom),
-        child: _CreateMarketCard(
-          selectedPerson: appState.selectedPerson,
-          people: appState.people,
-          showAsCard: false,
-          onCreate: ({
-            required String person,
-            required String question,
-            required String dateLabel,
-            required bool creatorPickedYes,
-            required double creatorStake,
-          }) {
-            appState.createMarket(
-              person: person,
-              question: question,
-              dateLabel: dateLabel,
-              creatorPickedYes: creatorPickedYes,
-              creatorStake: creatorStake,
-            );
-            Navigator.of(sheetContext).pop();
-          },
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: 16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
         ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'Create room',
+              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'You\'ll get a join code. Members can add their own questions; you moderate and can delete questions (bets are refunded).',
+              style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: personController,
+              decoration: const InputDecoration(
+                labelText: 'Who is this about?',
+                hintText: 'e.g. Alex',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                final GameRoom? room = await appState.createRoom(personController.text);
+                if (!sheetContext.mounted) {
+                  return;
+                }
+                if (room != null) {
+                  Navigator.of(sheetContext).pop();
+                  await _showJoinCodeDialog(context, room.joinCode, room.personName);
+                } else if (appState.gameError != null) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(content: Text(appState.gameError!)),
+                  );
+                }
+              },
+              child: const Text('Create & get join code'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  personController.dispose();
+}
+
+Future<void> _showAddQuestionSheet(BuildContext context, AppState appState) async {
+  final TextEditingController controller = TextEditingController();
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (BuildContext sheetContext) {
+      return Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: 16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'Add question',
+              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Question',
+                hintText: 'Will they ...?',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () async {
+                final PredictionMarket? q = await appState.addQuestion(controller.text);
+                if (!sheetContext.mounted) {
+                  return;
+                }
+                if (q != null) {
+                  Navigator.of(sheetContext).pop();
+                } else if (appState.gameError != null) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(content: Text(appState.gameError!)),
+                  );
+                }
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+  controller.dispose();
+}
+
+Future<void> _showJoinCodeDialog(BuildContext context, String code, String personName) async {
+  await showDialog<void>(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        title: const Text('Room created'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('Room for $personName', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            const Text('Share this join code:'),
+            const SizedBox(height: 8),
+            SelectableText(
+              code,
+              style: Theme.of(dialogContext).textTheme.headlineMedium?.copyWith(
+                    letterSpacing: 4,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1454A7),
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Friends join with this code, then anyone can add questions. You are the moderator.',
+              style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: code));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Code copied')),
+              );
+            },
+            child: const Text('Copy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+        ],
       );
     },
   );
 }
 
-class _PeopleSelector extends StatelessWidget {
-  const _PeopleSelector({
-    required this.people,
-    required this.selectedPerson,
+class _RoomPicker extends StatelessWidget {
+  const _RoomPicker({
+    required this.rooms,
+    required this.selectedId,
     required this.onChanged,
   });
 
-  final List<String> people;
-  final String selectedPerson;
+  final List<GameRoom> rooms;
+  final String? selectedId;
   final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool useDropdown = constraints.maxWidth < 560;
-        if (useDropdown) {
-          return DropdownButtonFormField<String>(
-            initialValue: selectedPerson,
-            decoration: const InputDecoration(
-              labelText: 'Person',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return DropdownButtonFormField<String>(
+      initialValue: selectedId,
+      decoration: const InputDecoration(
+        labelText: 'Active room',
+        border: OutlineInputBorder(),
+      ),
+      items: rooms
+          .map(
+            (GameRoom r) => DropdownMenuItem<String>(
+              value: r.id,
+              child: Text(
+                r.personName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            items: people.map((String person) {
-              return DropdownMenuItem<String>(
-                value: person,
-                child: Text(person, overflow: TextOverflow.ellipsis),
-              );
-            }).toList(),
-            onChanged: (String? value) {
-              if (value != null) {
-                onChanged(value);
-              }
-            },
-          );
+          )
+          .toList(),
+      onChanged: (String? id) {
+        if (id != null) {
+          onChanged(id);
         }
-
-        return SegmentedButton<String>(
-          segments: people
-              .map((String person) => ButtonSegment<String>(value: person, label: Text(person)))
-              .toList(),
-          selected: <String>{selectedPerson},
-          onSelectionChanged: (Set<String> selection) => onChanged(selection.first),
-          style: SegmentedButton.styleFrom(
-            selectedForegroundColor: Colors.white,
-            selectedBackgroundColor: const Color(0xFF1556A8),
-          ),
-        );
       },
     );
-  }
-}
-
-class _CreateMarketCard extends StatefulWidget {
-  const _CreateMarketCard({
-    required this.selectedPerson,
-    required this.people,
-    required this.onCreate,
-    this.showAsCard = true,
-  });
-
-  final String selectedPerson;
-  final List<String> people;
-  final void Function({
-    required String person,
-    required String question,
-    required String dateLabel,
-    required bool creatorPickedYes,
-    required double creatorStake,
-  }) onCreate;
-  final bool showAsCard;
-
-  @override
-  State<_CreateMarketCard> createState() => _CreateMarketCardState();
-}
-
-class _CreateMarketCardState extends State<_CreateMarketCard> {
-  final TextEditingController _questionController = TextEditingController();
-  final TextEditingController _stakeController = TextEditingController(text: '500');
-  late String _person;
-  String _dateLabel = 'Today';
-  bool _creatorPickedYes = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _person = widget.selectedPerson;
-  }
-
-  @override
-  void didUpdateWidget(covariant _CreateMarketCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.people.contains(_person) && widget.people.isNotEmpty) {
-      _person = widget.people.first;
-    } else if (oldWidget.selectedPerson != widget.selectedPerson && oldWidget.selectedPerson == _person) {
-      _person = widget.selectedPerson;
-    }
-  }
-
-  @override
-  void dispose() {
-    _questionController.dispose();
-    _stakeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final Widget content = Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Create Market',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: _person,
-            decoration: const InputDecoration(
-              labelText: 'Person',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: widget.people
-                .map((String person) => DropdownMenuItem<String>(value: person, child: Text(person)))
-                .toList(),
-            onChanged: (String? value) {
-              if (value != null) {
-                setState(() => _person = value);
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _questionController,
-            decoration: const InputDecoration(
-              labelText: 'Question',
-              hintText: 'Will ... ?',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            initialValue: _dateLabel,
-            decoration: const InputDecoration(
-              labelText: 'Date Group',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: const <DropdownMenuItem<String>>[
-              DropdownMenuItem<String>(value: 'Today', child: Text('Today')),
-              DropdownMenuItem<String>(value: 'Tomorrow', child: Text('Tomorrow')),
-            ],
-            onChanged: (String? value) {
-              if (value != null) {
-                setState(() => _dateLabel = value);
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Your starting side',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF526170),
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<bool>(
-            segments: const <ButtonSegment<bool>>[
-              ButtonSegment<bool>(value: true, label: Text('Yes')),
-              ButtonSegment<bool>(value: false, label: Text('No')),
-            ],
-            selected: <bool>{_creatorPickedYes},
-            onSelectionChanged: (Set<bool> selection) {
-              setState(() => _creatorPickedYes = selection.first);
-            },
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _stakeController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Starting pot (points)',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _submit,
-              child: const Text('Add Market'),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (widget.showAsCard) {
-      return Card(child: content);
-    }
-    return content;
-  }
-
-  void _submit() {
-    final String person = _person.trim();
-    final String question = _questionController.text.trim();
-    final double stake = double.tryParse(_stakeController.text.trim()) ?? 0;
-    if (person.isEmpty || question.isEmpty || stake <= 0) {
-      return;
-    }
-    widget.onCreate(
-      person: person,
-      question: question,
-      dateLabel: _dateLabel,
-      creatorPickedYes: _creatorPickedYes,
-      creatorStake: stake,
-    );
-    _questionController.clear();
-    FocusScope.of(context).unfocus();
   }
 }
 
@@ -363,8 +445,9 @@ class _BetAmountFieldState extends State<_BetAmountField> {
   @override
   void didUpdateWidget(covariant _BetAmountField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value && _controller.text != widget.value.toStringAsFixed(0)) {
-      _controller.text = widget.value.toStringAsFixed(0);
+    final String next = widget.value.toStringAsFixed(0);
+    if (_controller.text != next) {
+      _controller.text = next;
     }
   }
 
@@ -380,19 +463,15 @@ class _BetAmountFieldState extends State<_BetAmountField> {
       controller: _controller,
       keyboardType: TextInputType.number,
       decoration: const InputDecoration(
-        labelText: 'Bet Amount (points)',
+        labelText: 'Bet amount (points)',
         border: OutlineInputBorder(),
       ),
-      onSubmitted: _handleInput,
-      onChanged: _handleInput,
+      onChanged: (String value) {
+        final double? parsed = double.tryParse(value);
+        if (parsed != null) {
+          widget.onChanged(parsed);
+        }
+      },
     );
-  }
-
-  void _handleInput(String raw) {
-    final double? value = double.tryParse(raw);
-    if (value == null) {
-      return;
-    }
-    widget.onChanged(value);
   }
 }

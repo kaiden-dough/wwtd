@@ -6,12 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db import Base, engine
-from app.routers import auth, markets, me, people
+from app.db_migrate import run_migrations
+from app.routers import auth, leaderboard, me, people, rooms
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
     yield
 
 
@@ -30,7 +32,9 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(me.router, prefix="/api")
 app.include_router(people.router, prefix="/api")
-app.include_router(markets.router, prefix="/api")
+app.include_router(rooms.router, prefix="/api")
+app.include_router(rooms.markets_router, prefix="/api")
+app.include_router(leaderboard.router, prefix="/api")
 
 
 @app.get("/health")

@@ -29,6 +29,7 @@ class SendCodeBody(BaseModel):
 class VerifyCodeBody(BaseModel):
     email: EmailStr
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 def _normalize_email(email: str) -> str:
@@ -120,13 +121,16 @@ def verify_code(body: VerifyCodeBody, db: Annotated[Session, Depends(get_db)]) -
 
     profile = db.scalar(select(Profile).where(Profile.email == email))
     if profile is None:
-        local_part = email.split("@", 1)[0]
+        name = body.display_name.strip() if body.display_name else None
         profile = Profile(
             id=str(uuid.uuid4()),
             email=email,
-            display_name=local_part,
+            display_name=name,
+            balance_points=float(settings.starting_balance_points),
         )
         db.add(profile)
+    elif body.display_name:
+        profile.display_name = body.display_name.strip()
     db.commit()
     db.refresh(profile)
 
