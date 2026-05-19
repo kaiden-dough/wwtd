@@ -2,11 +2,16 @@ from collections.abc import Generator
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+import logging
+
 from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_sqlite_parent_dir(database_url: str) -> None:
@@ -26,13 +31,17 @@ def normalize_database_url(raw: str) -> str:
     elif url.startswith("postgresql://") and "+psycopg" not in url.split("://", 1)[0]:
         url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
 
-    # Supabase pooler URLs often include ?pgbouncer=true — psycopg handles it; strip for SQLAlchemy compat if needed.
     parsed = urlparse(url)
     if parsed.query:
+        # Drop pgbouncer flag; keep sslmode and other driver params.
         query = [(k, v) for k, v in parse_qsl(parsed.query) if k.lower() not in {"pgbouncer"}]
         url = urlunparse(parsed._replace(query=urlencode(query)))
 
-    return url
+    # Supabase requires TLS from external hosts (e.g. Render).
+    sqla_url = make_url(url)
+    if not sqla_url.query.get("sslmode"):
+        sqla_url = sqla_url.update_query_dict({"sslmode": "require"})
+    return sqla_url.render_as_string(hide_password=False)
 
 
 def resolve_database_url() -> str:
@@ -53,11 +62,12 @@ def create_app_engine() -> Engine:
             pool_pre_ping=True,
         )
 
+    # Transaction pooler (Supabase port 6543): use NullPool; avoid server-side prepared statements.
     return create_engine(
         database_url,
+        poolclass=NullPool,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
+        connect_args={"prepare_threshold": None},
     )
 
 

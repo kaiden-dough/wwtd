@@ -136,8 +136,10 @@ Expected: `{"status":"ok"}`
 If deploy fails:
 
 - **Database connection error** → wrong password, wrong URI, or use pooler port **6543**.
+- **Build OK but “Exited with status 1”** → open **Logs** (runtime, not build). Usually `DATABASE_URL` wrong or password needs [URL encoding](https://supabase.com/docs/guides/database/postgres/connection-strings) if it contains `@`, `#`, `/`, etc.
 - **Module not found** → **Root Directory** must be `wwtd/backend`.
 - **Build failed** → open Logs → Build; confirm `requirements.txt` exists in that folder.
+- Set **`PYTHON_VERSION`** = `3.12.8` in Environment (avoid 3.14 unless build already works).
 
 ### 2.6 Smoke-test login (optional)
 

@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -5,15 +6,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db import Base, engine
+from app.db import Base, engine, is_postgres
 from app.db_migrate import run_migrations
 from app.routers import auth, leaderboard, me, people, rooms
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    run_migrations(engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        run_migrations(engine)
+        logger.info("Database ready (%s)", "postgres" if is_postgres() else "sqlite")
+    except Exception:
+        logger.exception("Database startup failed — check DATABASE_URL (pooler :6543, URL-encode password)")
+        raise
     yield
 
 
