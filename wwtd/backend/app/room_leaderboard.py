@@ -45,7 +45,7 @@ def entries_for_room(db: Session, room_id: str) -> list[LeaderboardEntryOut]:
         wins = int(row["wins"])
         net = float(row["net"])
         win_rate = (wins / resolved * 100.0) if resolved else 0.0
-        label = member.display_name or member.email or member.id
+        label = member.display_name or member.username or member.email or member.id
         entries.append(
             LeaderboardEntryOut(
                 user_id=member.id,

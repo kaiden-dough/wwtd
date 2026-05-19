@@ -56,7 +56,7 @@ class AppGate extends StatelessWidget {
       );
     }
 
-    if (!appState.isLoggedIn || appState.needsDisplayName) {
+    if (!appState.isLoggedIn) {
       return const LoginScreen();
     }
 

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class ProfileOut(BaseModel):
     id: str
+    username: str | None
     email: str | None
     display_name: str | None
     avatar_url: str | None

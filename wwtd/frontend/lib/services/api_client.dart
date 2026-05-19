@@ -5,7 +5,6 @@ import 'package:wwtd/config/api_config.dart';
 import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/room_leaderboard.dart';
 import 'package:wwtd/models/prediction_market.dart';
-import 'package:wwtd/models/send_code_result.dart';
 import 'package:wwtd/models/user_bet.dart';
 import 'package:wwtd/models/user_profile.dart';
 
@@ -44,38 +43,45 @@ class ApiClient {
 
   Uri _uri(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
 
-  Future<SendCodeResult> sendLoginCode(String email) async {
+  Future<UserProfile> register({
+    required String username,
+    required String password,
+    required String displayName,
+  }) async {
     final http.Response response = await _client.post(
-      _uri('/api/auth/send-code'),
+      _uri('/api/auth/register'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, String>{'email': email.trim().toLowerCase()}),
+      body: jsonEncode(<String, String>{
+        'username': username.trim(),
+        'password': password,
+        'display_name': displayName.trim(),
+      }),
     );
-    if (response.statusCode != 200) {
+    if (response.statusCode != 201) {
       throw _errorFromResponse(response);
     }
-    return SendCodeResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return _profileFromAuthResponse(response);
   }
 
-  Future<UserProfile> verifyLoginCode({
-    required String email,
-    required String code,
-    String? displayName,
+  Future<UserProfile> login({
+    required String username,
+    required String password,
   }) async {
-    final Map<String, String> payload = <String, String>{
-      'email': email.trim().toLowerCase(),
-      'code': code.trim(),
-    };
-    if (displayName != null && displayName.trim().isNotEmpty) {
-      payload['display_name'] = displayName.trim();
-    }
     final http.Response response = await _client.post(
-      _uri('/api/auth/verify-code'),
+      _uri('/api/auth/login'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(payload),
+      body: jsonEncode(<String, String>{
+        'username': username.trim(),
+        'password': password,
+      }),
     );
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
+    return _profileFromAuthResponse(response);
+  }
+
+  UserProfile _profileFromAuthResponse(http.Response response) {
     final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
     _token = body['access_token'] as String;
     return UserProfile.fromJson(body['profile'] as Map<String, dynamic>);

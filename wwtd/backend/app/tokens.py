@@ -6,11 +6,11 @@ from jwt.exceptions import PyJWTError
 from app.config import settings
 
 
-def create_access_token(user_id: str, email: str | None) -> str:
+def create_access_token(user_id: str, username: str | None) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": user_id,
-        "email": email,
+        "username": username,
         "iat": now,
         "exp": now + timedelta(days=settings.jwt_expire_days),
     }

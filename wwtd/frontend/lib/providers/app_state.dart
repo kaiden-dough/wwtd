@@ -32,29 +32,13 @@ class AppState extends ChangeNotifier {
   bool _gameLoading = false;
   String? _authError;
   String? _gameError;
-  bool _codeSent = false;
-  String _pendingEmail = '';
-  String? _devCode;
-  String? _sendCodeMessage;
-
   UserProfile? get user => _user;
   bool get isLoggedIn => _user != null;
   bool get sessionReady => _sessionReady;
-  bool get needsDisplayName {
-    final String? name = _user?.displayName;
-    return isLoggedIn && (name == null || name.trim().isEmpty);
-  }
-
-  bool get pendingDisplayNameSetup => _pendingDisplayNameSetup;
-  bool _pendingDisplayNameSetup = false;
   bool get authLoading => _authLoading == true;
   bool get gameLoading => _gameLoading == true;
   String? get authError => _authError;
   String? get gameError => _gameError;
-  bool get codeSent => _codeSent == true;
-  String get pendingEmail => _pendingEmail;
-  String? get devCode => _devCode;
-  String? get sendCodeMessage => _sendCodeMessage;
   List<UserBet> get myBets => _myBets;
 
   List<GameRoom> get rooms => _rooms;
@@ -180,72 +164,53 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendLoginCode(String email) async {
-    final String normalized = email.trim().toLowerCase();
-    if (!_isValidEmail(normalized)) {
-      _authError = 'Enter a valid email address';
+  Future<void> register({
+    required String username,
+    required String password,
+    required String displayName,
+  }) async {
+    final String? validationError = _validateCredentials(username, password, displayName: displayName);
+    if (validationError != null) {
+      _authError = validationError;
       notifyListeners();
       return;
     }
 
-    _setAuthLoading(true);
-    _authError = null;
-    notifyListeners();
-
-    try {
-      final result = await _api.sendLoginCode(normalized);
-      _pendingEmail = normalized;
-      _codeSent = true;
-      _devCode = result.devCode;
-      _sendCodeMessage = result.message;
-    } on ApiException catch (e) {
-      _authError = e.message;
-    } on http.ClientException {
-      _authError = _offlineMessage;
-    } catch (e) {
-      _authError = 'Request failed: $e';
-    } finally {
-      _setAuthLoading(false);
-    }
+    await _authenticate(() => _api.register(
+          username: username,
+          password: password,
+          displayName: displayName,
+        ));
   }
 
-  Future<void> verifyLoginCode(String code) async {
-    if (_pendingEmail.isEmpty) {
-      _authError = 'Enter your email first';
+  Future<void> login({
+    required String username,
+    required String password,
+  }) async {
+    final String? validationError = _validateCredentials(username, password);
+    if (validationError != null) {
+      _authError = validationError;
       notifyListeners();
       return;
     }
 
-    final String digits = code.replaceAll(RegExp(r'\D'), '');
-    if (digits.length != 6) {
-      _authError = 'Enter the 6-digit code';
-      notifyListeners();
-      return;
-    }
+    await _authenticate(() => _api.login(username: username, password: password));
+  }
 
+  Future<void> _authenticate(Future<UserProfile> Function() request) async {
     _setAuthLoading(true);
     _authError = null;
     notifyListeners();
 
     try {
-      final UserProfile profile = await _api.verifyLoginCode(
-        email: _pendingEmail,
-        code: digits,
-      );
+      final UserProfile profile = await request();
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = _api.token ?? '';
       if (token.isNotEmpty) {
         await prefs.setString(_tokenKey, token);
       }
       _user = profile;
-      _codeSent = false;
-      _pendingEmail = '';
-      _devCode = null;
-      _sendCodeMessage = null;
-      _pendingDisplayNameSetup = needsDisplayName;
-      if (!_pendingDisplayNameSetup) {
-        await _refreshGameData();
-      }
+      await _refreshGameData();
     } on ApiException catch (e) {
       _authError = e.message;
     } on http.ClientException {
@@ -274,7 +239,6 @@ class AppState extends ChangeNotifier {
 
     try {
       _user = await _api.updateDisplayName(name);
-      _pendingDisplayNameSetup = false;
       await _refreshGameData();
       _authError = null;
       notifyListeners();
@@ -301,23 +265,9 @@ class AppState extends ChangeNotifier {
     await prefs.remove(_tokenKey);
     _api.setToken(null);
     _user = null;
-    _pendingDisplayNameSetup = false;
-    _codeSent = false;
-    _pendingEmail = '';
-    _devCode = null;
-    _sendCodeMessage = null;
     _authError = null;
     _gameError = null;
     _clearGameData();
-    notifyListeners();
-  }
-
-  void resetLoginFlow() {
-    _codeSent = false;
-    _pendingEmail = '';
-    _devCode = null;
-    _sendCodeMessage = null;
-    _authError = null;
     notifyListeners();
   }
 
@@ -337,8 +287,18 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _isValidEmail(String email) {
-    return RegExp(r'^[^@]+@[^@]+\.[^@]+$').hasMatch(email);
+  String? _validateCredentials(String username, String password, {String? displayName}) {
+    final String normalized = username.trim().toLowerCase();
+    if (!RegExp(r'^[a-zA-Z0-9_]{3,32}$').hasMatch(normalized)) {
+      return 'Username must be 3–32 characters: letters, numbers, underscore only';
+    }
+    if (password.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (displayName != null && displayName.trim().isEmpty) {
+      return 'Enter a display name';
+    }
+    return null;
   }
 
   String get _offlineMessage =>

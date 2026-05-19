@@ -157,11 +157,37 @@ def _migrate_legacy_markets(conn) -> None:
         conn.execute(text("DROP TABLE bets_legacy"))
 
 
-def run_migrations(engine: Engine) -> None:
-    # Legacy SQLite-only migrations (old markets → rooms). Fresh Supabase DBs use SQLAlchemy create_all.
-    if engine.dialect.name != "sqlite":
+def _migrate_profiles_auth_sqlite(conn) -> None:
+    if not _table_exists(conn, "profiles"):
         return
-    with engine.begin() as conn:
-        if _table_exists(conn, "profiles") and "balance_points" not in _column_names(conn, "profiles"):
-            conn.execute(text("ALTER TABLE profiles ADD COLUMN balance_points REAL NOT NULL DEFAULT 500"))
-        _migrate_legacy_markets(conn)
+    cols = _column_names(conn, "profiles")
+    if "username" not in cols:
+        conn.execute(text("ALTER TABLE profiles ADD COLUMN username VARCHAR(32)"))
+    if "password_hash" not in cols:
+        conn.execute(text("ALTER TABLE profiles ADD COLUMN password_hash VARCHAR(128)"))
+
+
+def _migrate_profiles_auth_postgres(conn) -> None:
+    conn.execute(
+        text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username VARCHAR(32) UNIQUE")
+    )
+    conn.execute(
+        text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS password_hash VARCHAR(128)")
+    )
+
+
+def run_migrations(engine: Engine) -> None:
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        with engine.begin() as conn:
+            if _table_exists(conn, "profiles") and "balance_points" not in _column_names(
+                conn, "profiles"
+            ):
+                conn.execute(
+                    text("ALTER TABLE profiles ADD COLUMN balance_points REAL NOT NULL DEFAULT 500")
+                )
+            _migrate_profiles_auth_sqlite(conn)
+            _migrate_legacy_markets(conn)
+    elif dialect == "postgresql":
+        with engine.begin() as conn:
+            _migrate_profiles_auth_postgres(conn)

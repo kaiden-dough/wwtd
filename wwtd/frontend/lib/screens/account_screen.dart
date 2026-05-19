@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/models/user_bet.dart';
 import 'package:wwtd/models/user_profile.dart';
@@ -52,234 +51,6 @@ class _AccountSheetContentState extends State<AccountSheetContent> {
         _BetHistorySection(
           bets: appState.roomBets,
           roomLabel: appState.selectedRoom?.personName,
-        ),
-      ],
-    );
-  }
-}
-
-class LoginDisplayNameStep extends StatelessWidget {
-  const LoginDisplayNameStep({
-    super.key,
-    required this.nameController,
-    required this.onContinue,
-  });
-
-  final TextEditingController nameController;
-  final Future<bool> Function() onContinue;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppState appState = context.watch<AppState>();
-    final bool loading = appState.authLoading;
-    final String? authError = appState.authError;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Choose display name',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'This is how you appear on room leaderboards.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: nameController,
-          textCapitalization: TextCapitalization.words,
-          autocorrect: false,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: 'Display name',
-            hintText: 'e.g. Alex',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (_) => appState.clearAuthError(),
-          onSubmitted: (_) {
-            if (!loading) {
-              onContinue();
-            }
-          },
-        ),
-        if (authError != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Text(authError, style: const TextStyle(color: Color(0xFFC62828))),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: loading ? null : onContinue,
-          child: loading
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Continue'),
-        ),
-      ],
-    );
-  }
-}
-
-class LoginEmailStep extends StatelessWidget {
-  const LoginEmailStep({
-    super.key,
-    required this.emailController,
-    required this.onSendCode,
-  });
-
-  final TextEditingController emailController;
-  final VoidCallback onSendCode;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppState appState = context.watch<AppState>();
-    final bool loading = appState.authLoading;
-    final String? authError = appState.authError;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Sign in',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'We\'ll email you a 6-digit code.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: emailController,
-          keyboardType: TextInputType.emailAddress,
-          autocorrect: false,
-          textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: 'Email',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (_) => appState.clearAuthError(),
-          onSubmitted: (_) {
-            if (!loading) {
-              onSendCode();
-            }
-          },
-        ),
-        if (authError != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Text(authError, style: const TextStyle(color: Color(0xFFC62828))),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: loading ? null : onSendCode,
-          child: loading
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Send code'),
-        ),
-      ],
-    );
-  }
-}
-
-class LoginCodeStep extends StatelessWidget {
-  const LoginCodeStep({
-    super.key,
-    required this.email,
-    required this.codeController,
-    required this.onVerify,
-    required this.onBack,
-  });
-
-  final String email;
-  final TextEditingController codeController;
-  final VoidCallback onVerify;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppState appState = context.watch<AppState>();
-    final bool loading = appState.authLoading;
-    final String? authError = appState.authError;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Enter code',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          appState.sendCodeMessage ?? 'Sent to $email',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
-        ),
-        if (appState.devCode != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F1FC),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF165AB0).withValues(alpha: 0.3)),
-            ),
-            child: Column(
-              children: <Widget>[
-                Text(
-                  'Dev login code',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: const Color(0xFF1454A7),
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  appState.devCode!,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        letterSpacing: 6,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1454A7),
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
-        TextField(
-          controller: codeController,
-          keyboardType: TextInputType.number,
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(6),
-          ],
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(letterSpacing: 8),
-          decoration: const InputDecoration(
-            labelText: '6-digit code',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: (_) => appState.clearAuthError(),
-          onSubmitted: (_) {
-            if (!loading) {
-              onVerify();
-            }
-          },
-        ),
-        if (authError != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Text(authError, style: const TextStyle(color: Color(0xFFC62828))),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: loading ? null : onVerify,
-          child: loading
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Verify & sign in'),
-        ),
-        TextButton(
-          onPressed: loading ? null : onBack,
-          child: const Text('Use a different email'),
         ),
       ],
     );
@@ -352,7 +123,9 @@ class _LoggedInSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String label = user.displayName?.isNotEmpty == true ? user.displayName! : user.email;
+    final String label = user.displayName?.isNotEmpty == true
+        ? user.displayName!
+        : (user.username.isNotEmpty ? user.username : 'Player');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -375,10 +148,11 @@ class _LoggedInSection extends StatelessWidget {
                     label,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  Text(
-                    user.email,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
-                  ),
+                  if (user.username.isNotEmpty)
+                    Text(
+                      '@${user.username}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+                    ),
                 ],
               ),
             ),

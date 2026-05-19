@@ -109,9 +109,13 @@ Scroll to **Environment Variables** → **Add Environment Variable** for each:
 | `SMTP_PORT` | `587` | Yes |
 | `SMTP_USER` | Your SMTP login email | Yes |
 | `SMTP_PASSWORD` | App password / API key | Yes |
-| `SMTP_FROM` | Same as or authorized sender | Yes |
-| `SMTP_USE_TLS` | `true` | Yes |
-| `EXPOSE_DEV_OTP` | `false` | Yes in production |
+| `SMTP_FROM` | Same as or authorized sender | Optional (local SMTP) |
+| `SMTP_USE_TLS` | `true` | Optional |
+| `BREVO_API_KEY` | From [brevo.com](https://www.brevo.com) → SMTP & API → API keys | **Yes on Render free tier** |
+| `EMAIL_FROM` | `What Would They Do <you@gmail.com>` (must be verified in Brevo) | Yes |
+| `EXPOSE_DEV_OTP` | `false` after email works | Yes in production |
+
+**Render free tier blocks outbound SMTP** (ports 587/465). Use **Brevo** (HTTPS API, below) — not Gmail SMTP on Render free.
 | `CORS_ORIGINS` | `*` temporarily, then your Vercel URL (step 4) | Yes |
 
 Do **not** set `SQLITE_PATH` when using Supabase.
@@ -305,8 +309,9 @@ CORS_ORIGINS=https://your-app.vercel.app
 `wwtd/backend/.env` (never commit):
 
 ```env
-DATABASE_URL=postgresql://postgres.axffuusaaathvketrgzf:WhatWouldTheyDo@aws-1-us-west-1.pooler.supabase.com:6543/postgres
+DATABASE_URL=<your-supabase-pooler-uri>
 JWT_SECRET=dev-secret
+RESEND_API_KEY=<optional-for-local>
 EXPOSE_DEV_OTP=true
 ```
 
@@ -331,10 +336,196 @@ flutter build web --dart-define=API_BASE_URL=https://YOUR-SERVICE.onrender.com
 | `/health` 502 / crash on start | Bad `DATABASE_URL` | Pooler URI, correct password, URL-encode special chars in password |
 | CORS error in browser | Wrong `CORS_ORIGINS` | Exact Vercel URL, redeploy Render |
 | “Cannot reach API” on web | Wrong `API_BASE_URL` at build time | Rebuild Flutter with correct Render URL |
-| Login code never arrives | SMTP | Gmail App Password, `SMTP_FROM` matches user |
+| Login code never arrives | SMTP blocked on Render free | Use `BREVO_API_KEY` + verified sender (see below) |
+| `Network is unreachable` on send-code | Render blocks port 587 | Resend or paid Render plan |
 | Render cold start slow | Free tier | Wait 30–60s or upgrade |
 | Empty Supabase tables | API never started successfully | Check Render logs during first deploy |
 | App works locally, not Vercel | Built without `dart-define` | Rebuild with `API_BASE_URL` |
+
+---
+
+## Email on Render (Brevo — full setup)
+
+### Why Brevo (and not Gmail SMTP on Render)
+
+| Method | Render free tier |
+|--------|------------------|
+| Gmail `SMTP_HOST` + port 587 | Blocked → `Network is unreachable` |
+| **Brevo API** (HTTPS) | Works |
+
+Brevo’s free plan is enough for login codes (~300 emails/day). You **do not** need to buy a website domain if you verify a **Gmail address** as the sender.
+
+---
+
+### Part A — Create a Brevo account
+
+1. Go to [https://www.brevo.com](https://www.brevo.com) → **Sign up free**.
+2. Confirm your own email (Brevo account email).
+3. Complete the short onboarding (company name can be personal / “WWTD”).
+
+You land on the Brevo dashboard.
+
+---
+
+### Part B — Verify a sender (who emails are “from”)
+
+This is the address users see as the sender. It **must** be verified before Brevo will send.
+
+1. In the left menu: **Settings** (gear) → **Senders, domains, IPs** → tab **Senders**.
+   - Or: **Transactional** → **Settings** → **Senders**.
+2. Click **Add a sender** (or **Create a new sender**).
+3. Fill in:
+   - **From name:** `What Would They Do` (or `WWTD`)
+   - **From email:** your Gmail, e.g. `kaiden12345do@gmail.com`
+4. Submit. Brevo emails that Gmail inbox a **verification link**.
+5. Open Gmail → click the link → sender status becomes **Verified** (green).
+
+**Important:**
+
+- `EMAIL_FROM` on Render must use **this exact verified email**.
+- You can verify multiple senders later; one Gmail is enough to start.
+- If verification email doesn’t arrive, check spam or use Brevo’s “Resend verification”.
+
+You do **not** need to add a custom domain in Brevo for basic use. Domain setup is optional later for branding (`noreply@yourdomain.com`).
+
+---
+
+### Part C — Create an API key
+
+The wwtd API sends mail via Brevo’s HTTP API, not SMTP.
+
+1. Left menu: **SMTP & API** → **API keys**  
+   (sometimes under **Settings → SMTP & API**).
+2. **Generate a new API key**.
+3. **Name:** `wwtd-render-production` (anything you’ll recognize).
+4. **Permissions:** choose **Send emails only** / restricted to sending — **not** full account access unless you need it for the dashboard.
+5. **Create** → copy the key immediately. It looks like:
+
+   ```text
+   xkeysib-abc123def456...
+   ```
+
+6. Store it in a password manager. You won’t see the full key again.
+
+---
+
+### Part D — Configure Render
+
+1. [dashboard.render.com](https://dashboard.render.com) → your **wwtd-api** Web Service.
+2. **Environment** → add or update:
+
+| Key | Value | Notes |
+|-----|--------|--------|
+| `BREVO_API_KEY` | `xkeysib-...` | Paste full API key, no quotes |
+| `EMAIL_FROM` | `What Would They Do <kaiden12345do@gmail.com>` | Name + **verified** Gmail; angle brackets required for name format |
+| `EXPOSE_DEV_OTP` | `false` | Set `true` only while debugging without email |
+
+**`EMAIL_FROM` formats that work:**
+
+```text
+What Would They Do <you@gmail.com>
+WWTD <you@gmail.com>
+you@gmail.com
+```
+
+**Optional:** you can remove these on Render (they don’t work on free tier):
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
+- `RESEND_API_KEY` (unless you still use Resend)
+
+3. **Save Changes** → Render redeploys (wait until status is **Live**).
+
+---
+
+### Part E — Deploy the Brevo code (if not already)
+
+Your repo must include `app/email_service.py` with `_send_via_brevo`. If you haven’t pushed yet:
+
+```powershell
+cd c:\Users\kaide\wwtd
+git add wwtd/backend
+git commit -m "Add Brevo for login emails"
+git push
+```
+
+Wait for Render deploy to finish after push.
+
+---
+
+### Part F — Test end-to-end
+
+1. Open `https://kaidendo.vercel.app` (or your Vercel URL).
+2. Enter an email to log in with → **Send code**.
+3. Success in the app: **“Check your email for the 6-digit code.”** (not “use dev code below”).
+4. Check inbox + **spam** for subject **“Your wwtd login code”**.
+5. Enter the 6-digit code → choose display name if prompted → you’re in.
+
+**Parallel checks:**
+
+- **Brevo dashboard** → **Transactional** → **Email** (or **Logs**) → you should see the send as **Delivered** or **Sent**.
+- **Render** → **Logs** → look for `Login code sent via Brevo to ...` (no `Brevo failed` traceback).
+
+**Quick API test** (replace URL and email):
+
+```powershell
+curl -X POST https://YOUR-SERVICE.onrender.com/api/auth/send-code `
+  -H "Content-Type: application/json" `
+  -d '{"email":"you@gmail.com"}'
+```
+
+Response should mention checking email, not only dev code.
+
+---
+
+### Part G — Local development with Brevo (optional)
+
+In `wwtd/backend/.env` (never commit this file):
+
+```env
+BREVO_API_KEY=xkeysib-your-key
+EMAIL_FROM=What Would They Do <you@gmail.com>
+EXPOSE_DEV_OTP=false
+JWT_SECRET=local-dev
+```
+
+```powershell
+cd wwtd\backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+Flutter local: `flutter run -d chrome` (defaults API to `http://127.0.0.1:8000`).
+
+---
+
+### Brevo troubleshooting
+
+| What you see | What to do |
+|--------------|------------|
+| App says “use dev code below” | `BREVO_API_KEY` missing on Render, or old code not deployed; set `EXPOSE_DEV_OTP=true` temporarily |
+| Render log: `Brevo failed (401)` | Wrong or revoked API key — generate a new one |
+| Render log: `Brevo failed (400)` + sender message | Sender not verified — finish Part B; `EMAIL_FROM` must match verified email exactly |
+| Render log: `Invalid EMAIL_FROM` | Fix format: `Name <email@domain.com>` or plain `email@domain.com` |
+| Brevo shows “Sent” but no inbox | Spam folder; Gmail “Promotions”; wait 1–2 minutes |
+| `Network is unreachable` still | App is still using SMTP, not Brevo — remove `SMTP_HOST` or ensure `BREVO_API_KEY` is set and code is deployed |
+| Hit daily limit | Free tier cap — wait 24h or upgrade Brevo plan |
+| Only works for your email | Some new Brevo accounts are restricted until account is reviewed — check Brevo notifications |
+
+### Brevo vs buying a domain
+
+| Approach | Cost | Send to any user email? |
+|----------|------|-------------------------|
+| Verified Gmail sender | Free | Yes (typical for wwtd) |
+| Verified custom domain in Brevo | ~$10/yr domain | Yes, looks more professional (`noreply@kaidendo.com`) |
+
+For wwtd with friends, **verified Gmail is enough**.
+
+---
+
+### Security checklist
+
+- Never commit `BREVO_API_KEY` to GitHub (only in Render env + local `.env`).
+- Use a **send-only** API key permission.
+- Rotate the key if it leaks: Brevo → delete old key → new key → update Render.
 
 ---
 

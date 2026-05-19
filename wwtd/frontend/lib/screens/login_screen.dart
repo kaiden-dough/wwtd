@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/providers/app_state.dart';
-import 'package:wwtd/screens/account_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,15 +9,28 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
   void dispose() {
-    _emailController.dispose();
-    _codeController.dispose();
+    _tabController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     _displayNameController.dispose();
     super.dispose();
   }
@@ -26,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    final bool choosingName = appState.isLoggedIn && appState.needsDisplayName;
+    final bool isRegister = _tabController.index == 1;
 
     return Scaffold(
       body: SafeArea(
@@ -48,9 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    choosingName
-                        ? 'Pick a name for the leaderboard.'
-                        : 'Sign in to bet on predictions with friends.',
+                    'Sign in to bet on predictions with friends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF607182)),
                   ),
@@ -58,23 +68,87 @@ class _LoginScreenState extends State<LoginScreen> {
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
-                      child: choosingName
-                          ? LoginDisplayNameStep(
-                              nameController: _displayNameController,
-                              onContinue: () =>
-                                  appState.completeDisplayName(_displayNameController.text),
-                            )
-                          : appState.codeSent
-                              ? LoginCodeStep(
-                                  email: appState.pendingEmail,
-                                  codeController: _codeController,
-                                  onVerify: () => appState.verifyLoginCode(_codeController.text),
-                                  onBack: appState.resetLoginFlow,
-                                )
-                              : LoginEmailStep(
-                                  emailController: _emailController,
-                                  onSendCode: () => appState.sendLoginCode(_emailController.text),
-                                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          TabBar(
+                            controller: _tabController,
+                            onTap: (_) {
+                              appState.clearAuthError();
+                              setState(() {});
+                            },
+                            tabs: const <Tab>[
+                              Tab(text: 'Log in'),
+                              Tab(text: 'Sign up'),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          TextField(
+                            controller: _usernameController,
+                            autocorrect: false,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Username',
+                              hintText: 'letters, numbers, underscore',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => appState.clearAuthError(),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            autocorrect: false,
+                            textInputAction: isRegister ? TextInputAction.next : TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Password',
+                              hintText: 'at least 8 characters',
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (_) => appState.clearAuthError(),
+                            onSubmitted: (_) {
+                              if (!appState.authLoading && !isRegister) {
+                                _submitLogin(appState);
+                              }
+                            },
+                          ),
+                          if (isRegister) ...<Widget>[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _displayNameController,
+                              textCapitalization: TextCapitalization.words,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.done,
+                              decoration: const InputDecoration(
+                                labelText: 'Display name',
+                                hintText: 'shown on leaderboards',
+                                border: OutlineInputBorder(),
+                              ),
+                              onChanged: (_) => appState.clearAuthError(),
+                            ),
+                          ],
+                          if (appState.authError != null) ...<Widget>[
+                            const SizedBox(height: 12),
+                            Text(
+                              appState.authError!,
+                              style: const TextStyle(color: Color(0xFFC62828)),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: appState.authLoading
+                                ? null
+                                : () => isRegister ? _submitRegister(appState) : _submitLogin(appState),
+                            child: appState.authLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Text(isRegister ? 'Create account' : 'Log in'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -83,6 +157,21 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _submitLogin(AppState appState) {
+    appState.login(
+      username: _usernameController.text,
+      password: _passwordController.text,
+    );
+  }
+
+  void _submitRegister(AppState appState) {
+    appState.register(
+      username: _usernameController.text,
+      password: _passwordController.text,
+      displayName: _displayNameController.text,
     );
   }
 }

@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_use_tls: bool = True
+    # Brevo HTTPS API — recommended on Render free tier (SMTP ports 587/465 are blocked).
+    brevo_api_key: str = ""
+    brevo_sender_name: str = "What Would They Do"
+    brevo_sender_email: str = ""
+    # Optional fallback providers
+    resend_api_key: str = ""
+    email_from: str = ""
     # When SMTP is not set, return the OTP in the API response (local dev only).
     expose_dev_otp: bool = True
 

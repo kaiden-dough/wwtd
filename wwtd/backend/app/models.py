@@ -22,6 +22,8 @@ class Profile(Base):
     __table_args__ = (UniqueConstraint("email", name="uq_profiles_email"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
