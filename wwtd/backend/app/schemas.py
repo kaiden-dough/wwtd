@@ -22,9 +22,11 @@ class ProfileUpdate(BaseModel):
 class LeaderboardEntryOut(BaseModel):
     user_id: str
     display_name: str
-    net_points: float
+    wins: int = 0
+    resolved_bets: int = 0
     win_rate: float = 0.0
-    is_trending_up: bool = True
+    net_points: float = 0.0
+    is_trending_up: bool = False
 
 
 class RoomLeaderboardOut(BaseModel):
@@ -77,13 +79,23 @@ class RoomCreate(BaseModel):
 
 class RoomJoin(BaseModel):
     join_code: str = Field(min_length=4, max_length=8)
+    room_id: str | None = None
+
+
+class RoomDiscoverOut(BaseModel):
+    id: str
+    person_name: str
+    moderator_name: str
+    is_member: bool = False
 
 
 class RoomOut(BaseModel):
     id: str
     join_code: str
     person_name: str
+    moderator_name: str
     is_moderator: bool = False
+    balance_points: float
     created_at: datetime
 
 

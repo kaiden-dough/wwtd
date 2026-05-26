@@ -6,7 +6,7 @@ from app.schemas import LeaderboardEntryOut
 
 
 def entries_for_room(db: Session, room_id: str) -> list[LeaderboardEntryOut]:
-    """Rank room members by net profit from resolved bets in this room."""
+    """Rank room members by most correct predictions, then win rate."""
     members = list(
         db.scalars(
             select(Profile)
@@ -15,7 +15,7 @@ def entries_for_room(db: Session, room_id: str) -> list[LeaderboardEntryOut]:
         )
     )
     stats: dict[str, dict[str, float | int]] = {
-        member.id: {"net": 0.0, "wins": 0, "resolved": 0} for member in members
+        member.id: {"wins": 0, "resolved": 0, "net": 0.0} for member in members
     }
 
     bets = list(
@@ -30,12 +30,14 @@ def entries_for_room(db: Session, room_id: str) -> list[LeaderboardEntryOut]:
         if bet.user_id not in stats:
             continue
         question = bet.question
-        if question.status != "resolved" or bet.payout_amount is None:
+        if question.status != "resolved" or question.winning_side is None:
+            continue
+        if bet.payout_amount is None:
             continue
         row = stats[bet.user_id]
-        row["net"] = float(row["net"]) + (bet.payout_amount - bet.amount)
         row["resolved"] = int(row["resolved"]) + 1
-        if bet.payout_amount > bet.amount:
+        row["net"] = float(row["net"]) + (bet.payout_amount - bet.amount)
+        if bet.side == question.winning_side.lower():
             row["wins"] = int(row["wins"]) + 1
 
     entries: list[LeaderboardEntryOut] = []
@@ -43,20 +45,23 @@ def entries_for_room(db: Session, room_id: str) -> list[LeaderboardEntryOut]:
         row = stats[member.id]
         resolved = int(row["resolved"])
         wins = int(row["wins"])
-        net = float(row["net"])
         win_rate = (wins / resolved * 100.0) if resolved else 0.0
         label = member.username or member.display_name or member.email or member.id
         entries.append(
             LeaderboardEntryOut(
                 user_id=member.id,
                 display_name=label,
-                net_points=net,
+                wins=wins,
+                resolved_bets=resolved,
                 win_rate=win_rate,
-                is_trending_up=net >= 0,
+                net_points=float(row["net"]),
+                is_trending_up=win_rate >= 50.0 if resolved else False,
             )
         )
 
-    entries.sort(key=lambda e: (-e.net_points, -e.win_rate, e.display_name.lower()))
+    entries.sort(
+        key=lambda e: (-e.wins, -e.win_rate, e.display_name.lower()),
+    )
     return entries
 
 

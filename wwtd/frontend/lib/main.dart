@@ -85,27 +85,28 @@ class AppShell extends StatelessWidget {
         ),
         centerTitle: false,
         actions: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F1FE),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF165AB0).withValues(alpha: 0.25)),
-                ),
-                child: Text(
-                  '${appState.userBalance.toStringAsFixed(0)} pts',
-                  style: const TextStyle(
-                    color: Color(0xFF1454A7),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
+          if (appState.selectedRoom != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F1FE),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF165AB0).withValues(alpha: 0.25)),
+                  ),
+                  child: Text(
+                    '${appState.userBalance.toStringAsFixed(0)} pts',
+                    style: const TextStyle(
+                      color: Color(0xFF1454A7),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           IconButton(
             tooltip: 'Account',
             onPressed: () => showAccountSheet(context),

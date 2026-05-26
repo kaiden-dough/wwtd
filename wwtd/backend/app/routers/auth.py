@@ -41,6 +41,14 @@ def _validate_username(username: str) -> None:
         )
 
 
+def _username_format_error(username: str) -> str | None:
+    if len(username) < 3:
+        return "Username must be at least 3 characters"
+    if not _USERNAME_RE.match(username):
+        return "Username must be 3–32 characters: letters, numbers, underscore only"
+    return None
+
+
 def _profile_out(profile: Profile) -> ProfileOut:
     return ProfileOut.model_validate(profile)
 
@@ -48,6 +56,32 @@ def _profile_out(profile: Profile) -> ProfileOut:
 def _issue_token(profile: Profile) -> AuthTokenOut:
     token = create_access_token(profile.id, profile.username)
     return AuthTokenOut(access_token=token, profile=_profile_out(profile))
+
+
+class UsernameAvailabilityOut(BaseModel):
+    available: bool
+    username: str
+    message: str | None = None
+
+
+@router.get("/check-username", response_model=UsernameAvailabilityOut)
+def check_username(username: str, db: Annotated[Session, Depends(get_db)]) -> UsernameAvailabilityOut:
+    normalized = _normalize_username(username)
+    format_error = _username_format_error(normalized)
+    if format_error is not None:
+        return UsernameAvailabilityOut(
+            available=False,
+            username=normalized,
+            message=format_error,
+        )
+    taken = db.scalar(select(Profile).where(Profile.username == normalized)) is not None
+    if taken:
+        return UsernameAvailabilityOut(
+            available=False,
+            username=normalized,
+            message="Username already taken",
+        )
+    return UsernameAvailabilityOut(available=True, username=normalized)
 
 
 @router.post("/register", response_model=AuthTokenOut, status_code=status.HTTP_201_CREATED)
@@ -64,7 +98,7 @@ def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> Aut
         username=username,
         password_hash=hash_password(body.password),
         display_name=username,
-        balance_points=float(settings.starting_balance_points),
+        balance_points=0.0,
     )
     db.add(profile)
     db.commit()

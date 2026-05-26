@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
+import 'package:wwtd/widgets/join_room_sheet.dart';
 import 'package:wwtd/widgets/market_card.dart';
 import 'package:wwtd/widgets/room_leaderboard_section.dart';
 
@@ -47,7 +48,9 @@ class BettingScreen extends StatelessWidget {
                     height: constraints.maxHeight,
                     child: const Padding(
                       padding: EdgeInsets.only(top: 12, right: 14, bottom: 12),
-                      child: RoomLeaderboardSection(),
+                      child: SizedBox.expand(
+                        child: RoomLeaderboardSection(),
+                      ),
                     ),
                   ),
                 ],
@@ -75,9 +78,9 @@ class BettingScreen extends StatelessWidget {
         children: <Widget>[
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () => _showJoinSheet(context, appState),
-              icon: const Icon(Icons.vpn_key_outlined, size: 18),
-              label: const Text('Join code'),
+              onPressed: () => showJoinRoomSheet(context),
+              icon: const Icon(Icons.group_add_outlined, size: 18),
+              label: const Text('Join room'),
             ),
           ),
           const SizedBox(width: 8),
@@ -150,67 +153,6 @@ class BettingScreen extends StatelessWidget {
       const SizedBox(height: 24),
     ];
   }
-}
-
-Future<void> _showJoinSheet(BuildContext context, AppState appState) async {
-  final TextEditingController controller = TextEditingController();
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (BuildContext sheetContext) {
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          bottom: 16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'Join room',
-              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              textCapitalization: TextCapitalization.characters,
-              inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-                LengthLimitingTextInputFormatter(8),
-              ],
-              decoration: const InputDecoration(
-                labelText: 'Join code',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () async {
-                final GameRoom? joined = await appState.joinRoom(controller.text);
-                if (!sheetContext.mounted) {
-                  return;
-                }
-                if (joined != null) {
-                  Navigator.of(sheetContext).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Joined room for ${joined.personName}')),
-                  );
-                } else if (appState.gameError != null) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text(appState.gameError!)),
-                  );
-                }
-              },
-              child: const Text('Join'),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-  controller.dispose();
 }
 
 Future<void> _showCreateRoomSheet(BuildContext context, AppState appState) async {
@@ -391,23 +333,53 @@ class _RoomPicker extends StatelessWidget {
   final String? selectedId;
   final ValueChanged<String> onChanged;
 
+  static const TextStyle _moderatorStyle = TextStyle(
+    color: Color(0xFF165AB0),
+    fontWeight: FontWeight.w600,
+    fontSize: 13,
+  );
+
   @override
   Widget build(BuildContext context) {
+    final List<GameRoom> sorted = List<GameRoom>.from(rooms)
+      ..sort((GameRoom a, GameRoom b) {
+        if (a.isModerator != b.isModerator) {
+          return a.isModerator ? -1 : 1;
+        }
+        return a.personName.compareTo(b.personName);
+      });
+
+    final String? value = selectedId != null && sorted.any((GameRoom r) => r.id == selectedId)
+        ? selectedId
+        : null;
+
     return DropdownButtonFormField<String>(
-      initialValue: selectedId,
+      // Controlled selection when rooms load or change from AppState.
+      // ignore: deprecated_member_use
+      value: value,
+      isExpanded: true,
       decoration: const InputDecoration(
         labelText: 'Active room',
         border: OutlineInputBorder(),
       ),
-      items: rooms
+      selectedItemBuilder: (BuildContext context) {
+        return sorted
+            .map(
+              (GameRoom r) => SizedBox(
+                width: double.infinity,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _selectedRoomLabel(r),
+                ),
+              ),
+            )
+            .toList();
+      },
+      items: sorted
           .map(
             (GameRoom r) => DropdownMenuItem<String>(
               value: r.id,
-              child: Text(
-                r.personName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: _dropdownRoomLabel(r),
             ),
           )
           .toList(),
@@ -416,6 +388,64 @@ class _RoomPicker extends StatelessWidget {
           onChanged(id);
         }
       },
+    );
+  }
+
+  Widget _selectedRoomLabel(GameRoom room) {
+    return Text.rich(
+      TextSpan(
+        style: const TextStyle(fontSize: 14, color: Color(0xFF1A1A1A)),
+        children: <InlineSpan>[
+          TextSpan(
+            text: room.personName,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const TextSpan(text: ' · '),
+          TextSpan(text: room.moderatorName, style: _moderatorStyle),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _dropdownRoomLabel(GameRoom room) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          room.personName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        if (room.isModerator) ...<Widget>[
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F1FE),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'You moderate',
+              style: TextStyle(
+                color: Color(0xFF1454A7),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 2),
+        Text(
+          room.isModerator ? 'Moderator: You' : 'Moderator: ${room.moderatorName}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _moderatorStyle,
+        ),
+      ],
     );
   }
 }

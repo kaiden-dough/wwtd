@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, case, exists, func, select
+from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_profile
@@ -11,18 +11,19 @@ from app.models import Bet, Person, Profile, Question, Room, RoomMember
 from app.payouts import resolve_question
 from app.question_betting import betting_open_for, is_betting_open
 from app.refunds import refund_question_bets
-from app.schemas import BetCreate, QuestionCreate, QuestionOut, QuestionResolve, RoomCreate, RoomJoin, RoomOut
+from app.room_balance import deduct_room_balance, get_room_member, starting_balance
+from app.schemas import (
+    BetCreate,
+    QuestionCreate,
+    QuestionOut,
+    QuestionResolve,
+    RoomCreate,
+    RoomDiscoverOut,
+    RoomJoin,
+    RoomOut,
+)
 
 router = APIRouter(tags=["rooms"])
-
-
-def _deduct_balance(profile: Profile, amount: float) -> None:
-    if profile.balance_points < amount:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail=f"Insufficient balance ({profile.balance_points:.0f} points available)",
-        )
-    profile.balance_points -= amount
 
 
 def _get_or_create_person(db: Session, name: str) -> Person:
@@ -46,10 +47,20 @@ def _require_member(db: Session, room: Room, profile: Profile) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Join this room with its code first")
 
 
-def _add_member(db: Session, room_id: str, user_id: str) -> None:
-    if _is_member(db, room_id, user_id):
-        return
-    db.add(RoomMember(room_id=room_id, user_id=user_id))
+def _add_member(db: Session, room_id: str, user_id: str) -> RoomMember:
+    member = db.scalar(
+        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.user_id == user_id)
+    )
+    if member is not None:
+        return member
+    member = RoomMember(
+        room_id=room_id,
+        user_id=user_id,
+        balance_points=starting_balance(),
+    )
+    db.add(member)
+    db.flush()
+    return member
 
 
 def _is_moderator(room: Room, profile: Profile) -> bool:
@@ -146,14 +157,68 @@ def _run_questions_query(
     return questions
 
 
-def _room_out(room: Room, person: Person, profile: Profile) -> RoomOut:
+def _room_out(
+    room: Room,
+    person: Person,
+    profile: Profile,
+    member: RoomMember,
+    moderator: Profile,
+) -> RoomOut:
+    is_mod = _is_moderator(room, profile)
+    mod_label = "You" if is_mod else _moderator_label(moderator)
     return RoomOut(
         id=room.id,
         join_code=room.join_code,
         person_name=person.name,
-        is_moderator=_is_moderator(room, profile),
+        moderator_name=mod_label,
+        is_moderator=is_mod,
+        balance_points=float(member.balance_points),
         created_at=room.created_at,
     )
+
+
+def _moderator_label(profile: Profile) -> str:
+    return profile.username or profile.display_name or profile.email or "Unknown"
+
+
+@router.get("/rooms/discover", response_model=list[RoomDiscoverOut])
+def discover_rooms(
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    q: str = "",
+) -> list[RoomDiscoverOut]:
+    """Search rooms by subject name or moderator. Join code is never returned."""
+    term = q.strip()
+    if len(term) < 1:
+        return []
+
+    pattern = f"%{term}%"
+    stmt = (
+        select(Room, Person, Profile)
+        .join(Person, Room.person_id == Person.id)
+        .join(Profile, Room.created_by == Profile.id)
+        .where(
+            or_(
+                Person.name.ilike(pattern),
+                Profile.username.ilike(pattern),
+                Profile.display_name.ilike(pattern),
+            )
+        )
+        .order_by(Room.created_at.desc())
+        .limit(25)
+    )
+    rows = db.execute(stmt).all()
+    results: list[RoomDiscoverOut] = []
+    for room, person, moderator in rows:
+        results.append(
+            RoomDiscoverOut(
+                id=room.id,
+                person_name=person.name,
+                moderator_name=_moderator_label(moderator),
+                is_member=_is_member(db, room.id, profile.id),
+            )
+        )
+    return results
 
 
 @router.get("/rooms", response_model=list[RoomOut])
@@ -162,14 +227,20 @@ def list_my_rooms(
     profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> list[RoomOut]:
     stmt = (
-        select(Room, Person)
+        select(Room, Person, RoomMember, Profile)
         .join(RoomMember, RoomMember.room_id == Room.id)
         .join(Person, Room.person_id == Person.id)
+        .join(Profile, Room.created_by == Profile.id)
         .where(RoomMember.user_id == profile.id)
-        .order_by(Room.created_at.desc())
     )
-    rows = db.execute(stmt).all()
-    return [_room_out(room, person, profile) for room, person in rows]
+    rows = list(db.execute(stmt).all())
+    rows.sort(
+        key=lambda row: (
+            0 if row[0].created_by == profile.id else 1,
+            -row[0].created_at.timestamp(),
+        )
+    )
+    return [_room_out(room, person, profile, member, moderator) for room, person, member, moderator in rows]
 
 
 @router.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
@@ -186,10 +257,10 @@ def create_room(
     )
     db.add(room)
     db.flush()
-    _add_member(db, room.id, profile.id)
+    member = _add_member(db, room.id, profile.id)
     db.commit()
     db.refresh(room)
-    return _room_out(room, person, profile)
+    return _room_out(room, person, profile, member, profile)
 
 
 @router.post("/rooms/join", response_model=RoomOut)
@@ -199,15 +270,35 @@ def join_room(
     profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> RoomOut:
     code = body.join_code.strip().upper()
-    row = db.execute(
-        select(Room, Person).join(Person, Room.person_id == Person.id).where(Room.join_code == code)
-    ).first()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invalid join code")
-    room, person = row
-    _add_member(db, room.id, profile.id)
+    if body.room_id is not None:
+        row = db.execute(
+            select(Room, Person, Profile)
+            .join(Person, Room.person_id == Person.id)
+            .join(Profile, Room.created_by == Profile.id)
+            .where(Room.id == body.room_id)
+        ).first()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+        room, person, moderator = row
+        if room.join_code.upper() != code:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="Join code does not match the selected room",
+            )
+    else:
+        row = db.execute(
+            select(Room, Person, Profile)
+            .join(Person, Room.person_id == Person.id)
+            .join(Profile, Room.created_by == Profile.id)
+            .where(Room.join_code == code)
+        ).first()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invalid join code")
+        room, person, moderator = row
+    member = _add_member(db, room.id, profile.id)
     db.commit()
-    return _room_out(room, person, profile)
+    db.refresh(member)
+    return _room_out(room, person, profile, member, moderator)
 
 
 @router.get("/rooms/{room_id}/questions", response_model=list[QuestionOut])
@@ -314,7 +405,8 @@ def place_bet(
         )
 
     amount = float(body.amount)
-    _deduct_balance(profile, amount)
+    member = get_room_member(db, question.room_id, profile.id)
+    deduct_room_balance(member, amount)
     db.add(
         Bet(
             question_id=question.id,
@@ -324,7 +416,6 @@ def place_bet(
         )
     )
     db.commit()
-    db.refresh(profile)
 
     rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
     if not rows:

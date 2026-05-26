@@ -167,6 +167,25 @@ def _migrate_profiles_auth_sqlite(conn) -> None:
         conn.execute(text("ALTER TABLE profiles ADD COLUMN password_hash VARCHAR(128)"))
 
 
+def _migrate_room_member_balance_sqlite(conn) -> None:
+    if not _table_exists(conn, "room_members"):
+        return
+    cols = _column_names(conn, "room_members")
+    if "balance_points" not in cols:
+        conn.execute(
+            text("ALTER TABLE room_members ADD COLUMN balance_points REAL NOT NULL DEFAULT 500")
+        )
+
+
+def _migrate_room_member_balance_postgres(conn) -> None:
+    conn.execute(
+        text(
+            "ALTER TABLE room_members ADD COLUMN IF NOT EXISTS "
+            "balance_points DOUBLE PRECISION NOT NULL DEFAULT 500"
+        )
+    )
+
+
 def _migrate_profiles_auth_postgres(conn) -> None:
     conn.execute(
         text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username VARCHAR(32) UNIQUE")
@@ -187,7 +206,9 @@ def run_migrations(engine: Engine) -> None:
                     text("ALTER TABLE profiles ADD COLUMN balance_points REAL NOT NULL DEFAULT 500")
                 )
             _migrate_profiles_auth_sqlite(conn)
+            _migrate_room_member_balance_sqlite(conn)
             _migrate_legacy_markets(conn)
     elif dialect == "postgresql":
         with engine.begin() as conn:
             _migrate_profiles_auth_postgres(conn)
+            _migrate_room_member_balance_postgres(conn)

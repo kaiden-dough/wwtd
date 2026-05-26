@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wwtd/config/api_config.dart';
 import 'package:wwtd/models/game_room.dart';
+import 'package:wwtd/models/room_discover.dart';
 import 'package:wwtd/models/leaderboard_entry.dart';
 import 'package:wwtd/models/room_leaderboard.dart';
 import 'package:wwtd/models/prediction_market.dart';
@@ -86,7 +87,8 @@ class AppState extends ChangeNotifier {
     });
     return bets;
   }
-  double get userBalance => _user?.balancePoints ?? 0;
+  /// Points balance for the currently selected room only.
+  double get userBalance => selectedRoom?.balancePoints ?? 0;
   List<RoomLeaderboard> get roomLeaderboards => _roomLeaderboards;
 
   List<LeaderboardEntry> get leaderboard {
@@ -129,23 +131,64 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshGameData() async {
+  Future<void> _refreshGameData({bool skipProfile = false}) async {
     _setGameLoading(true);
     try {
-      final UserProfile profile = await _api.fetchMe();
-      final List<GameRoom> rooms = await _api.fetchRooms();
-      final List<RoomLeaderboard> board = await _api.fetchLeaderboard();
-      final List<UserBet> bets = await _api.fetchMyBets();
-      _user = profile;
-      _rooms = rooms;
-      _roomLeaderboards = board;
-      _myBets = bets;
+      final Future<UserProfile>? profileFuture = skipProfile ? null : _api.fetchMe();
+      final Future<List<GameRoom>> roomsFuture = _api.fetchRooms();
+      final Future<List<UserBet>> betsFuture = _api.fetchMyBets();
+
+      if (profileFuture != null) {
+        final List<dynamic> batch = await Future.wait<dynamic>(<Future<dynamic>>[
+          profileFuture,
+          roomsFuture,
+          betsFuture,
+        ]);
+        _user = batch[0] as UserProfile;
+        _rooms = batch[1] as List<GameRoom>;
+        _myBets = batch[2] as List<UserBet>;
+      } else {
+        final List<dynamic> batch = await Future.wait<dynamic>(<Future<dynamic>>[
+          roomsFuture,
+          betsFuture,
+        ]);
+        _rooms = batch[0] as List<GameRoom>;
+        _myBets = batch[1] as List<UserBet>;
+      }
+
       _gameError = null;
       _ensureSelectedRoomValid();
-      await _loadQuestionsForSelectedRoom();
+      await _loadRoomContext();
     } finally {
       _setGameLoading(false);
     }
+  }
+
+  Future<void> _loadLeaderboardForRoom(String roomId) async {
+    final List<RoomLeaderboard> boards = await _api.fetchLeaderboard(roomId: roomId);
+    if (boards.isEmpty) {
+      return;
+    }
+    final RoomLeaderboard board = boards.first;
+    final int index = _roomLeaderboards.indexWhere((RoomLeaderboard b) => b.roomId == roomId);
+    if (index == -1) {
+      _roomLeaderboards = <RoomLeaderboard>[..._roomLeaderboards, board];
+    } else {
+      final List<RoomLeaderboard> updated = List<RoomLeaderboard>.from(_roomLeaderboards);
+      updated[index] = board;
+      _roomLeaderboards = updated;
+    }
+  }
+
+  Future<void> _loadRoomContext() async {
+    if (_selectedRoomId == null) {
+      _questions = <PredictionMarket>[];
+      return;
+    }
+    await Future.wait<void>(<Future<void>>[
+      _loadQuestionsForSelectedRoom(),
+      _loadLeaderboardForRoom(_selectedRoomId!),
+    ]);
   }
 
   void _clearGameData() {
@@ -166,6 +209,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _refreshRooms() async {
+    _rooms = await _api.fetchRooms();
+    _ensureSelectedRoomValid();
+  }
+
   Future<void> _loadQuestionsForSelectedRoom() async {
     if (_selectedRoomId == null) {
       _questions = <PredictionMarket>[];
@@ -179,8 +227,17 @@ class AppState extends ChangeNotifier {
       return;
     }
     _selectedRoomId = roomId;
-    await _loadQuestionsForSelectedRoom();
+    _setGameLoading(true);
+    try {
+      await _loadRoomContext();
+    } finally {
+      _setGameLoading(false);
+    }
     notifyListeners();
+  }
+
+  Future<({bool available, String? message})> checkUsername(String username) async {
+    return _api.checkUsername(username);
   }
 
   Future<void> register({
@@ -227,15 +284,21 @@ class AppState extends ChangeNotifier {
         await prefs.setString(_tokenKey, token);
       }
       _user = profile;
-      await _refreshGameData();
+      notifyListeners();
+      _setAuthLoading(false);
+      await _refreshGameData(skipProfile: true);
     } on ApiException catch (e) {
       _authError = e.message;
+      _setAuthLoading(false);
+      notifyListeners();
     } on http.ClientException {
       _authError = _offlineMessage;
+      _setAuthLoading(false);
+      notifyListeners();
     } catch (e) {
       _authError = 'Sign-in failed: $e';
-    } finally {
       _setAuthLoading(false);
+      notifyListeners();
     }
   }
 
@@ -377,9 +440,11 @@ class AppState extends ChangeNotifier {
       if (index != -1) {
         _questions[index] = updated;
       }
-      _user = await _api.fetchMe();
-      _myBets = await _api.fetchMyBets();
-      _roomLeaderboards = await _api.fetchLeaderboard();
+      await Future.wait<void>(<Future<void>>[
+        _refreshRooms(),
+        _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
+        if (_selectedRoomId != null) _loadLeaderboardForRoom(_selectedRoomId!),
+      ]);
       _gameError = null;
       notifyListeners();
       return true;
@@ -398,7 +463,21 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<GameRoom?> joinRoom(String joinCode) async {
+  Future<List<RoomDiscover>> searchRooms(String query) async {
+    if (!isLoggedIn) {
+      return <RoomDiscover>[];
+    }
+    try {
+      return await _api.discoverRooms(query);
+    } catch (_) {
+      return <RoomDiscover>[];
+    }
+  }
+
+  Future<GameRoom?> joinRoom({
+    required String joinCode,
+    String? roomId,
+  }) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to join a room';
       notifyListeners();
@@ -411,7 +490,7 @@ class AppState extends ChangeNotifier {
       return null;
     }
     try {
-      final GameRoom room = await _api.joinRoom(code);
+      final GameRoom room = await _api.joinRoom(joinCode: code, roomId: roomId);
       final int existing = _rooms.indexWhere((GameRoom r) => r.id == room.id);
       if (existing == -1) {
         _rooms.insert(0, room);
@@ -419,9 +498,10 @@ class AppState extends ChangeNotifier {
         _rooms[existing] = room;
       }
       _selectedRoomId = room.id;
-      await _loadQuestionsForSelectedRoom();
-      _user = await _api.fetchMe();
-      _myBets = await _api.fetchMyBets();
+      await Future.wait<void>(<Future<void>>[
+        _loadRoomContext(),
+        _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
+      ]);
       _gameError = null;
       notifyListeners();
       return room;
@@ -456,6 +536,8 @@ class AppState extends ChangeNotifier {
       _selectedRoomId = room.id;
       _questions = <PredictionMarket>[];
       _gameError = null;
+      notifyListeners();
+      await _loadLeaderboardForRoom(room.id);
       notifyListeners();
       return room;
     } on ApiException catch (e) {
@@ -516,9 +598,11 @@ class AppState extends ChangeNotifier {
     try {
       await _api.deleteQuestion(roomId: _selectedRoomId!, questionId: questionId);
       _questions.removeWhere((PredictionMarket q) => q.id == questionId);
-      _user = await _api.fetchMe();
-      _myBets = await _api.fetchMyBets();
-      _roomLeaderboards = await _api.fetchLeaderboard();
+      await Future.wait<void>(<Future<void>>[
+        _refreshRooms(),
+        _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
+        if (_selectedRoomId != null) _loadLeaderboardForRoom(_selectedRoomId!),
+      ]);
       _gameError = null;
       notifyListeners();
       return true;
@@ -553,9 +637,11 @@ class AppState extends ChangeNotifier {
       if (index != -1) {
         _questions[index] = updated;
       }
-      _user = await _api.fetchMe();
-      _myBets = await _api.fetchMyBets();
-      _roomLeaderboards = await _api.fetchLeaderboard();
+      await Future.wait<void>(<Future<void>>[
+        _refreshRooms(),
+        _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
+        if (_selectedRoomId != null) _loadLeaderboardForRoom(_selectedRoomId!),
+      ]);
       _gameError = null;
       notifyListeners();
       return true;

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:wwtd/config/api_config.dart';
 import 'package:wwtd/models/game_room.dart';
+import 'package:wwtd/models/room_discover.dart';
 import 'package:wwtd/models/room_leaderboard.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/models/user_bet.dart';
@@ -42,6 +43,21 @@ class ApiClient {
   }
 
   Uri _uri(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
+
+  Future<({bool available, String? message})> checkUsername(String username) async {
+    final http.Response response = await _client.get(
+      _uri('/api/auth/check-username?username=${Uri.encodeQueryComponent(username.trim())}'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (
+      available: body['available'] as bool? ?? false,
+      message: body['message'] as String?,
+    );
+  }
 
   Future<UserProfile> register({
     required String username,
@@ -165,13 +181,36 @@ class ApiClient {
     return GameRoom.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<GameRoom> joinRoom(String joinCode) async {
+  Future<List<RoomDiscover>> discoverRooms(String query) async {
+    final String q = query.trim();
+    if (q.isEmpty) {
+      return <RoomDiscover>[];
+    }
+    final http.Response response = await _client.get(
+      _uri('/api/rooms/discover?q=${Uri.encodeQueryComponent(q)}'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
+    return list.map((dynamic e) => RoomDiscover.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<GameRoom> joinRoom({
+    required String joinCode,
+    String? roomId,
+  }) async {
+    final Map<String, String> body = <String, String>{
+      'join_code': joinCode.trim().toUpperCase(),
+    };
+    if (roomId != null && roomId.isNotEmpty) {
+      body['room_id'] = roomId;
+    }
     final http.Response response = await _client.post(
       _uri('/api/rooms/join'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, String>{
-        'join_code': joinCode.trim().toUpperCase(),
-      }),
+      body: jsonEncode(body),
     );
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);

@@ -20,45 +20,59 @@ class RoomLeaderboardSection extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              'Leaderboard',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              entries.isEmpty
-                  ? 'No resolved bets yet.'
-                  : '$personName\'s room · you are #${appState.currentUserRank()}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF526170)),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: entries.isEmpty
-                  ? Align(
-                      alignment: Alignment.topCenter,
-                      child: Text(
-                        'Resolve questions to rank players.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+      child: SizedBox.expand(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.max,
+            children: <Widget>[
+              Text(
+                'Leaderboard',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                entries.isEmpty
+                    ? 'No resolved bets yet.'
+                    : '$personName\'s room · you are #${appState.currentUserRank()}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF526170)),
+              ),
+              if (entries.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Ranked by wins, then win rate. More bets = more chances.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF94A3B8),
+                          fontSize: 11,
+                        ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: entries.isEmpty
+                    ? Align(
+                        alignment: Alignment.topCenter,
+                        child: Text(
+                          'Resolve questions to rank players.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: entries.length,
+                        separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 6),
+                        itemBuilder: (BuildContext context, int index) {
+                          final LeaderboardEntry entry = entries[index];
+                          final int rank = index + 1;
+                          final bool isCurrent =
+                              entry.userId != null && entry.userId == appState.user?.id;
+                          return _LeaderboardRow(rank: rank, entry: entry, isCurrent: isCurrent);
+                        },
                       ),
-                    )
-                  : ListView.separated(
-                      itemCount: entries.length,
-                      separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 6),
-                      itemBuilder: (BuildContext context, int index) {
-                        final LeaderboardEntry entry = entries[index];
-                        final int rank = index + 1;
-                        final bool isCurrent =
-                            entry.userId != null && entry.userId == appState.user?.id;
-                        return _LeaderboardRow(rank: rank, entry: entry, isCurrent: isCurrent);
-                      },
-                    ),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -110,18 +124,20 @@ class _LeaderboardRow extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                 ),
                 Text(
-                  '${entry.winRate.toStringAsFixed(0)}% wins',
+                  entry.resolvedBets == 0
+                      ? 'No resolved bets'
+                      : '${entry.winRate.toStringAsFixed(0)}% · ${entry.resolvedBets} bet${entry.resolvedBets == 1 ? '' : 's'}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
                 ),
               ],
             ),
           ),
           Text(
-            _formatNet(entry.totalPoints),
+            '${entry.wins} ${entry.wins == 1 ? 'win' : 'wins'}',
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 13,
-              color: entry.isTrendingUp ? const Color(0xFF1F9D67) : const Color(0xFFD35A4A),
+              color: entry.wins > 0 ? const Color(0xFF1F9D67) : const Color(0xFF607182),
             ),
           ),
         ],
@@ -130,9 +146,3 @@ class _LeaderboardRow extends StatelessWidget {
   }
 }
 
-String _formatNet(int points) {
-  if (points > 0) {
-    return '+$points';
-  }
-  return '$points';
-}

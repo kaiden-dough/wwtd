@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/providers/app_state.dart';
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -13,6 +14,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late final TabController _tabController;
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  Timer? _usernameDebounce;
+  bool _checkingUsername = false;
+  bool? _usernameAvailable;
+  String? _usernameCheckMessage;
 
   @override
   void initState() {
@@ -20,23 +25,89 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
-        setState(() {});
+        setState(() {
+          if (_tabController.index != 1) {
+            _usernameAvailable = null;
+            _usernameCheckMessage = null;
+            _checkingUsername = false;
+          }
+        });
       }
     });
+    _usernameController.addListener(_onUsernameChanged);
   }
 
   @override
   void dispose() {
+    _usernameDebounce?.cancel();
     _tabController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
+  void _onUsernameChanged() {
+    if (_tabController.index != 1) {
+      return;
+    }
+    _usernameDebounce?.cancel();
+    _usernameDebounce = Timer(const Duration(milliseconds: 400), _checkUsernameAvailability);
+  }
+
+  Future<void> _checkUsernameAvailability() async {
+    final String raw = _usernameController.text.trim();
+    if (raw.length < 3) {
+      setState(() {
+        _checkingUsername = false;
+        _usernameAvailable = null;
+        _usernameCheckMessage = raw.isEmpty ? null : 'Username must be at least 3 characters';
+      });
+      return;
+    }
+
+    setState(() {
+      _checkingUsername = true;
+      _usernameCheckMessage = null;
+    });
+
+    try {
+      final AppState appState = context.read<AppState>();
+      final ({bool available, String? message}) result = await appState.checkUsername(raw);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _checkingUsername = false;
+        _usernameAvailable = result.available;
+        _usernameCheckMessage = result.message;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _checkingUsername = false;
+        _usernameAvailable = null;
+        _usernameCheckMessage = null;
+      });
+    }
+  }
+
+  bool _canSubmitRegister(AppState appState) {
+    if (_passwordController.text.length < 8) {
+      return false;
+    }
+    if (_checkingUsername) {
+      return false;
+    }
+    return _usernameAvailable == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
     final bool isRegister = _tabController.index == 1;
+    final bool canRegister = _canSubmitRegister(appState);
 
     return Scaffold(
       body: SafeArea(
@@ -76,6 +147,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             onTap: (_) {
                               appState.clearAuthError();
                               setState(() {});
+                              if (_tabController.index == 1) {
+                                _checkUsernameAvailability();
+                              }
                             },
                             tabs: const <Tab>[
                               Tab(text: 'Log in'),
@@ -87,12 +161,35 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             controller: _usernameController,
                             autocorrect: false,
                             textInputAction: TextInputAction.next,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Username',
                               hintText: 'letters, numbers, underscore',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
+                              suffixIcon: isRegister && _checkingUsername
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                  : isRegister && _usernameAvailable == true
+                                      ? const Icon(Icons.check_circle, color: Color(0xFF2C9B67))
+                                      : isRegister && _usernameAvailable == false
+                                          ? const Icon(Icons.cancel, color: Color(0xFFC62828))
+                                          : null,
+                              errorText: isRegister ? _usernameCheckMessage : null,
                             ),
-                            onChanged: (_) => appState.clearAuthError(),
+                            onChanged: (_) {
+                              appState.clearAuthError();
+                              if (isRegister) {
+                                setState(() {
+                                  _usernameAvailable = null;
+                                  _usernameCheckMessage = null;
+                                });
+                              }
+                            },
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -105,12 +202,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               hintText: 'at least 8 characters',
                               border: OutlineInputBorder(),
                             ),
-                            onChanged: (_) => appState.clearAuthError(),
+                            onChanged: (_) {
+                              appState.clearAuthError();
+                              if (isRegister) {
+                                setState(() {});
+                              }
+                            },
                             onSubmitted: (_) {
                               if (!appState.authLoading) {
-                                if (isRegister) {
+                                if (isRegister && canRegister) {
                                   _submitRegister(appState);
-                                } else {
+                                } else if (!isRegister) {
                                   _submitLogin(appState);
                                 }
                               }
@@ -125,9 +227,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           ],
                           const SizedBox(height: 16),
                           FilledButton(
-                            onPressed: appState.authLoading
+                            onPressed: appState.authLoading || (isRegister && !canRegister)
                                 ? null
-                                : () => isRegister ? _submitRegister(appState) : _submitLogin(appState),
+                                : () {
+                                    if (isRegister) {
+                                      _submitRegister(appState);
+                                    } else {
+                                      _submitLogin(appState);
+                                    }
+                                  },
                             child: appState.authLoading
                                 ? const SizedBox(
                                     height: 20,
