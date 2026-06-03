@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/providers/app_state.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -10,7 +11,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -51,7 +53,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
     _usernameDebounce?.cancel();
-    _usernameDebounce = Timer(const Duration(milliseconds: 400), _checkUsernameAvailability);
+    _usernameDebounce = Timer(
+      const Duration(milliseconds: 400),
+      _checkUsernameAvailability,
+    );
   }
 
   Future<void> _checkUsernameAvailability() async {
@@ -60,7 +65,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       setState(() {
         _checkingUsername = false;
         _usernameAvailable = null;
-        _usernameCheckMessage = raw.isEmpty ? null : 'Username must be at least 3 characters';
+        _usernameCheckMessage = raw.isEmpty
+            ? null
+            : 'Username must be at least 3 characters';
       });
       return;
     }
@@ -72,7 +79,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     try {
       final AppState appState = context.read<AppState>();
-      final ({bool available, String? message}) result = await appState.checkUsername(raw);
+      final ({bool available, String? message}) result = await appState
+          .checkUsername(raw);
       if (!mounted) {
         return;
       }
@@ -123,9 +131,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     'What Would They Do?',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1454A7),
-                        ),
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1454A7),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -133,7 +141,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ? 'Pick a username — that\'s how you appear on leaderboards.'
                         : 'Sign in to bet on predictions with friends.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: const Color(0xFF607182)),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: const Color(0xFF607182),
+                    ),
                   ),
                   const SizedBox(height: 32),
                   Card(
@@ -171,15 +181,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       child: SizedBox(
                                         width: 20,
                                         height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
                                       ),
                                     )
                                   : isRegister && _usernameAvailable == true
-                                      ? const Icon(Icons.check_circle, color: Color(0xFF2C9B67))
-                                      : isRegister && _usernameAvailable == false
-                                          ? const Icon(Icons.cancel, color: Color(0xFFC62828))
-                                          : null,
-                              errorText: isRegister ? _usernameCheckMessage : null,
+                                  ? const Icon(
+                                      Icons.check_circle,
+                                      color: Color(0xFF2C9B67),
+                                    )
+                                  : isRegister && _usernameAvailable == false
+                                  ? const Icon(
+                                      Icons.cancel,
+                                      color: Color(0xFFC62828),
+                                    )
+                                  : null,
+                              errorText: isRegister
+                                  ? _usernameCheckMessage
+                                  : null,
                             ),
                             onChanged: (_) {
                               appState.clearAuthError();
@@ -227,7 +247,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           ],
                           const SizedBox(height: 16),
                           FilledButton(
-                            onPressed: appState.authLoading || (isRegister && !canRegister)
+                            onPressed:
+                                appState.authLoading ||
+                                    (isRegister && !canRegister)
                                 ? null
                                 : () {
                                     if (isRegister) {
@@ -240,9 +262,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ? const SizedBox(
                                     height: 20,
                                     width: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
-                                : Text(isRegister ? 'Create account' : 'Log in'),
+                                : Text(
+                                    isRegister ? 'Create account' : 'Log in',
+                                  ),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: appState.authLoading
+                                ? null
+                                : () {
+                                    appState.clearAuthError();
+                                    appState.adminLogin();
+                                  },
+                            icon: const Icon(
+                              Icons.admin_panel_settings_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Temporary admin login'),
                           ),
                         ],
                       ),

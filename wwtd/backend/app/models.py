@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -43,6 +43,8 @@ class Person(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="person")
+    room_links: Mapped[list["RoomPerson"]] = relationship(back_populates="person")
+    question_links: Mapped[list["QuestionTarget"]] = relationship(back_populates="person")
 
 
 class Room(Base):
@@ -52,13 +54,29 @@ class Room(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     join_code: Mapped[str] = mapped_column(String(8), nullable=False, unique=True)
     person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="RESTRICT"), nullable=False)
+    room_type: Mapped[str] = mapped_column(String(16), nullable=False, default="individual")
     created_by: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="rooms")
+    people: Mapped[list["RoomPerson"]] = relationship(back_populates="room", cascade="all, delete-orphan")
     moderator: Mapped[Profile] = relationship(back_populates="rooms_created")
     members: Mapped[list["RoomMember"]] = relationship(back_populates="room", cascade="all, delete-orphan")
     questions: Mapped[list["Question"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+
+
+class RoomPerson(Base):
+    __tablename__ = "room_people"
+    __table_args__ = (UniqueConstraint("room_id", "person_id", name="uq_room_person"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="RESTRICT"), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    room: Mapped[Room] = relationship(back_populates="people")
+    person: Mapped[Person] = relationship(back_populates="room_links")
 
 
 class RoomMember(Base):
@@ -89,6 +107,20 @@ class Question(Base):
     room: Mapped[Room] = relationship(back_populates="questions")
     author: Mapped[Profile] = relationship(foreign_keys=[created_by])
     bets: Mapped[list["Bet"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+    targets: Mapped[list["QuestionTarget"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+
+
+class QuestionTarget(Base):
+    __tablename__ = "question_targets"
+    __table_args__ = (UniqueConstraint("question_id", "person_id", name="uq_question_target"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    question_id: Mapped[str] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="RESTRICT"), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    question: Mapped[Question] = relationship(back_populates="targets")
+    person: Mapped[Person] = relationship(back_populates="question_links")
 
 
 class Bet(Base):

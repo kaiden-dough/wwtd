@@ -117,3 +117,22 @@ def login(body: LoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthToken
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
 
     return _issue_token(profile)
+
+
+@router.post("/admin-login", response_model=AuthTokenOut)
+def admin_login(db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+    """Temporary local-dev shortcut for working on the app without creating accounts."""
+    username = "admin"
+    profile = db.scalar(select(Profile).where(Profile.username == username))
+    if profile is None:
+        profile = Profile(
+            id=str(uuid.uuid4()),
+            username=username,
+            password_hash=None,
+            display_name="Admin",
+            balance_points=0.0,
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return _issue_token(profile)

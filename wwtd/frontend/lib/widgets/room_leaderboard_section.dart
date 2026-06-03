@@ -29,14 +29,18 @@ class RoomLeaderboardSection extends StatelessWidget {
             children: <Widget>[
               Text(
                 'Leaderboard',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
                 entries.isEmpty
                     ? 'No resolved bets yet.'
                     : '$personName\'s room · you are #${appState.currentUserRank()}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF526170)),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF526170)),
               ),
               if (entries.isNotEmpty)
                 Padding(
@@ -44,9 +48,9 @@ class RoomLeaderboardSection extends StatelessWidget {
                   child: Text(
                     'Ranked by wins, then win rate. More bets = more chances.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF94A3B8),
-                          fontSize: 11,
-                        ),
+                      color: const Color(0xFF94A3B8),
+                      fontSize: 11,
+                    ),
                   ),
                 ),
               const SizedBox(height: 12),
@@ -56,18 +60,25 @@ class RoomLeaderboardSection extends StatelessWidget {
                         alignment: Alignment.topCenter,
                         child: Text(
                           'Resolve questions to rank players.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: const Color(0xFF607182)),
                         ),
                       )
                     : ListView.separated(
                         itemCount: entries.length,
-                        separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 6),
+                        separatorBuilder: (BuildContext context, int index) =>
+                            const SizedBox(height: 6),
                         itemBuilder: (BuildContext context, int index) {
                           final LeaderboardEntry entry = entries[index];
                           final int rank = index + 1;
                           final bool isCurrent =
-                              entry.userId != null && entry.userId == appState.user?.id;
-                          return _LeaderboardRow(rank: rank, entry: entry, isCurrent: isCurrent);
+                              entry.userId != null &&
+                              entry.userId == appState.user?.id;
+                          return _LeaderboardRow(
+                            rank: rank,
+                            entry: entry,
+                            isCurrent: isCurrent,
+                          );
                         },
                       ),
               ),
@@ -102,7 +113,9 @@ class _LeaderboardRow extends StatelessWidget {
         children: <Widget>[
           CircleAvatar(
             radius: 14,
-            backgroundColor: isCurrent ? const Color(0xFF1B67C9) : const Color(0xFFE8EEF5),
+            backgroundColor: isCurrent
+                ? const Color(0xFF1B67C9)
+                : const Color(0xFFE8EEF5),
             child: Text(
               '$rank',
               style: TextStyle(
@@ -121,13 +134,18 @@ class _LeaderboardRow extends StatelessWidget {
                   entry.username,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
                 Text(
                   entry.resolvedBets == 0
                       ? 'No resolved bets'
                       : '${entry.winRate.toStringAsFixed(0)}% · ${entry.resolvedBets} bet${entry.resolvedBets == 1 ? '' : 's'}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF607182),
+                  ),
                 ),
               ],
             ),
@@ -137,7 +155,9 @@ class _LeaderboardRow extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 13,
-              color: entry.wins > 0 ? const Color(0xFF1F9D67) : const Color(0xFF607182),
+              color: entry.wins > 0
+                  ? const Color(0xFF1F9D67)
+                  : const Color(0xFF607182),
             ),
           ),
         ],
@@ -145,4 +165,3 @@ class _LeaderboardRow extends StatelessWidget {
     );
   }
 }
-

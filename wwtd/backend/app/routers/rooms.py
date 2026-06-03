@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, case, exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.auth import get_current_profile
 from app.db import get_db
 from app.market_codes import generate_join_code
-from app.models import Bet, Person, Profile, Question, Room, RoomMember
+from app.models import Bet, Person, Profile, Question, QuestionTarget, Room, RoomMember, RoomPerson
 from app.payouts import resolve_question
 from app.question_betting import betting_open_for, is_betting_open
 from app.refunds import refund_question_bets
@@ -37,6 +37,53 @@ def _get_or_create_person(db: Session, name: str) -> Person:
     return person
 
 
+def _normalize_names(names: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        value = name.strip()
+        key = value.lower()
+        if not value or key in seen:
+            continue
+        normalized.append(value)
+        seen.add(key)
+    return normalized
+
+
+def _room_person_names(db: Session, room: Room, fallback: Person | None = None) -> list[str]:
+    rows = db.execute(
+        select(Person.name)
+        .join(RoomPerson, RoomPerson.person_id == Person.id)
+        .where(RoomPerson.room_id == room.id)
+        .order_by(RoomPerson.sort_order.asc(), Person.name.asc())
+    ).scalars().all()
+    if rows:
+        return list(rows)
+    if fallback is not None:
+        return [fallback.name]
+    if room.person is not None:
+        return [room.person.name]
+    return []
+
+
+def _room_label(names: list[str]) -> str:
+    if not names:
+        return "Unknown"
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names)
+
+
+def _question_target_names(db: Session, question_id: str, fallback_name: str) -> list[str]:
+    rows = db.execute(
+        select(Person.name)
+        .join(QuestionTarget, QuestionTarget.person_id == Person.id)
+        .where(QuestionTarget.question_id == question_id)
+        .order_by(QuestionTarget.sort_order.asc(), Person.name.asc())
+    ).scalars().all()
+    return list(rows) if rows else [fallback_name]
+
+
 def _is_member(db: Session, room_id: str, user_id: str) -> bool:
     stmt = select(exists().where(and_(RoomMember.room_id == room_id, RoomMember.user_id == user_id)))
     return bool(db.scalar(stmt))
@@ -61,6 +108,53 @@ def _add_member(db: Session, room_id: str, user_id: str) -> RoomMember:
     db.add(member)
     db.flush()
     return member
+
+
+def _add_room_people(db: Session, room: Room, people: list[Person]) -> None:
+    for index, person in enumerate(people):
+        db.add(
+            RoomPerson(
+                room_id=room.id,
+                person_id=person.id,
+                sort_order=index,
+                is_primary=index == 0,
+            )
+        )
+    db.flush()
+
+
+def _room_people(db: Session, room: Room) -> list[Person]:
+    rows = db.execute(
+        select(Person)
+        .join(RoomPerson, RoomPerson.person_id == Person.id)
+        .where(RoomPerson.room_id == room.id)
+        .order_by(RoomPerson.sort_order.asc(), Person.name.asc())
+    ).scalars().all()
+    if rows:
+        return list(rows)
+    if room.person is not None:
+        return [room.person]
+    person = db.get(Person, room.person_id)
+    return [person] if person is not None else []
+
+
+def _target_people_for_question(db: Session, room: Room, target_names: list[str]) -> list[Person]:
+    available = _room_people(db, room)
+    if not available:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Room has no people")
+
+    requested = _normalize_names(target_names)
+    if not requested:
+        return available
+
+    by_name = {person.name.lower(): person for person in available}
+    missing = [name for name in requested if name.lower() not in by_name]
+    if missing:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Question targets must be people in this room: {', '.join(missing)}",
+        )
+    return [by_name[name.lower()] for name in requested]
 
 
 def _is_moderator(room: Room, profile: Profile) -> bool:
@@ -134,6 +228,7 @@ def _run_questions_query(
             join_code=m.join_code,
             person_id=m.person_id,
             person_name=m.person_name,
+            target_names=_question_target_names(db, m.id, m.person_name),
             question=m.question,
             created_by=m.created_by,
             is_moderator=m.moderator_id == current.id,
@@ -158,6 +253,7 @@ def _run_questions_query(
 
 
 def _room_out(
+    db: Session,
     room: Room,
     person: Person,
     profile: Profile,
@@ -166,10 +262,13 @@ def _room_out(
 ) -> RoomOut:
     is_mod = _is_moderator(room, profile)
     mod_label = "You" if is_mod else _moderator_label(moderator)
+    person_names = _room_person_names(db, room, person)
     return RoomOut(
         id=room.id,
         join_code=room.join_code,
-        person_name=person.name,
+        person_name=_room_label(person_names),
+        person_names=person_names,
+        room_type=room.room_type,
         moderator_name=mod_label,
         is_moderator=is_mod,
         balance_points=float(member.balance_points),
@@ -193,6 +292,14 @@ def discover_rooms(
         return []
 
     pattern = f"%{term}%"
+    SearchPerson = aliased(Person)
+    person_match = exists().where(
+        and_(
+            RoomPerson.room_id == Room.id,
+            RoomPerson.person_id == SearchPerson.id,
+            SearchPerson.name.ilike(pattern),
+        )
+    )
     stmt = (
         select(Room, Person, Profile)
         .join(Person, Room.person_id == Person.id)
@@ -200,6 +307,7 @@ def discover_rooms(
         .where(
             or_(
                 Person.name.ilike(pattern),
+                person_match,
                 Profile.username.ilike(pattern),
                 Profile.display_name.ilike(pattern),
             )
@@ -210,10 +318,13 @@ def discover_rooms(
     rows = db.execute(stmt).all()
     results: list[RoomDiscoverOut] = []
     for room, person, moderator in rows:
+        person_names = _room_person_names(db, room, person)
         results.append(
             RoomDiscoverOut(
                 id=room.id,
-                person_name=person.name,
+                person_name=_room_label(person_names),
+                person_names=person_names,
+                room_type=room.room_type,
                 moderator_name=_moderator_label(moderator),
                 is_member=_is_member(db, room.id, profile.id),
             )
@@ -240,7 +351,7 @@ def list_my_rooms(
             -row[0].created_at.timestamp(),
         )
     )
-    return [_room_out(room, person, profile, member, moderator) for room, person, member, moderator in rows]
+    return [_room_out(db, room, person, profile, member, moderator) for room, person, member, moderator in rows]
 
 
 @router.post("/rooms", response_model=RoomOut, status_code=status.HTTP_201_CREATED)
@@ -249,18 +360,27 @@ def create_room(
     db: Annotated[Session, Depends(get_db)],
     profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> RoomOut:
-    person = _get_or_create_person(db, body.person_name)
+    requested_names = _normalize_names([
+        *body.person_names,
+        *([body.person_name] if body.person_name else []),
+    ])
+    if not requested_names:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Add at least one person")
+    people = [_get_or_create_person(db, name) for name in requested_names]
+    person = people[0]
     room = Room(
         join_code=generate_join_code(db),
         person_id=person.id,
+        room_type="group" if len(people) > 1 or body.room_type == "group" else "individual",
         created_by=profile.id,
     )
     db.add(room)
     db.flush()
+    _add_room_people(db, room, people)
     member = _add_member(db, room.id, profile.id)
     db.commit()
     db.refresh(room)
-    return _room_out(room, person, profile, member, profile)
+    return _room_out(db, room, person, profile, member, profile)
 
 
 @router.post("/rooms/join", response_model=RoomOut)
@@ -298,7 +418,7 @@ def join_room(
     member = _add_member(db, room.id, profile.id)
     db.commit()
     db.refresh(member)
-    return _room_out(room, person, profile, member, moderator)
+    return _room_out(db, room, person, profile, member, moderator)
 
 
 @router.get("/rooms/{room_id}/questions", response_model=list[QuestionOut])
@@ -324,6 +444,7 @@ def add_question(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
     _require_member(db, room, profile)
 
+    targets = _target_people_for_question(db, room, body.target_names)
     question = Question(
         room_id=room.id,
         question=body.question.strip(),
@@ -331,6 +452,15 @@ def add_question(
         status="open",
     )
     db.add(question)
+    db.flush()
+    for index, person in enumerate(targets):
+        db.add(
+            QuestionTarget(
+                question_id=question.id,
+                person_id=person.id,
+                sort_order=index,
+            )
+        )
     db.commit()
 
     rows = _run_questions_query(db, room_id=room_id, question_id=question.id, current=profile)

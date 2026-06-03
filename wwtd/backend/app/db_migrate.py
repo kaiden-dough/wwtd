@@ -177,11 +177,127 @@ def _migrate_room_member_balance_sqlite(conn) -> None:
         )
 
 
+def _migrate_room_people_sqlite(conn) -> None:
+    if not _table_exists(conn, "rooms"):
+        return
+    cols = _column_names(conn, "rooms")
+    if "room_type" not in cols:
+        conn.execute(
+            text("ALTER TABLE rooms ADD COLUMN room_type VARCHAR(16) NOT NULL DEFAULT 'individual'")
+        )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS room_people (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id VARCHAR(36) NOT NULL,
+                person_id INTEGER NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_primary BOOLEAN NOT NULL DEFAULT 0,
+                UNIQUE (room_id, person_id)
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO room_people (room_id, person_id, sort_order, is_primary)
+            SELECT id, person_id, 0, 1 FROM rooms
+            """
+        )
+    )
+
+
+def _migrate_question_targets_sqlite(conn) -> None:
+    if not _table_exists(conn, "questions") or not _table_exists(conn, "rooms"):
+        return
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS question_targets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_id VARCHAR(36) NOT NULL,
+                person_id INTEGER NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (question_id, person_id)
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO question_targets (question_id, person_id, sort_order)
+            SELECT questions.id, rooms.person_id, 0
+            FROM questions
+            JOIN rooms ON questions.room_id = rooms.id
+            """
+        )
+    )
+
+
 def _migrate_room_member_balance_postgres(conn) -> None:
     conn.execute(
         text(
             "ALTER TABLE room_members ADD COLUMN IF NOT EXISTS "
             "balance_points DOUBLE PRECISION NOT NULL DEFAULT 500"
+        )
+    )
+
+
+def _migrate_room_people_postgres(conn) -> None:
+    conn.execute(
+        text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS room_type VARCHAR(16) NOT NULL DEFAULT 'individual'")
+    )
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS room_people (
+                id SERIAL PRIMARY KEY,
+                room_id VARCHAR(36) NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE RESTRICT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+                UNIQUE (room_id, person_id)
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            INSERT INTO room_people (room_id, person_id, sort_order, is_primary)
+            SELECT id, person_id, 0, TRUE FROM rooms
+            ON CONFLICT (room_id, person_id) DO NOTHING
+            """
+        )
+    )
+
+
+def _migrate_question_targets_postgres(conn) -> None:
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS question_targets (
+                id SERIAL PRIMARY KEY,
+                question_id VARCHAR(36) NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+                person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE RESTRICT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (question_id, person_id)
+            )
+            """
+        )
+    )
+    conn.execute(
+        text(
+            """
+            INSERT INTO question_targets (question_id, person_id, sort_order)
+            SELECT questions.id, rooms.person_id, 0
+            FROM questions
+            JOIN rooms ON questions.room_id = rooms.id
+            ON CONFLICT (question_id, person_id) DO NOTHING
+            """
         )
     )
 
@@ -208,7 +324,11 @@ def run_migrations(engine: Engine) -> None:
             _migrate_profiles_auth_sqlite(conn)
             _migrate_room_member_balance_sqlite(conn)
             _migrate_legacy_markets(conn)
+            _migrate_room_people_sqlite(conn)
+            _migrate_question_targets_sqlite(conn)
     elif dialect == "postgresql":
         with engine.begin() as conn:
             _migrate_profiles_auth_postgres(conn)
             _migrate_room_member_balance_postgres(conn)
+            _migrate_room_people_postgres(conn)
+            _migrate_question_targets_postgres(conn)

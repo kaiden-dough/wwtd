@@ -21,7 +21,7 @@ class AppState extends ChangeNotifier {
   final ApiClient _api;
 
   String? _selectedRoomId;
-  double _betAmount = 10;
+  static const double _defaultPickWeight = 1;
   List<GameRoom> _rooms = <GameRoom>[];
   List<PredictionMarket> _questions = <PredictionMarket>[];
   List<RoomLeaderboard> _roomLeaderboards = <RoomLeaderboard>[];
@@ -59,7 +59,9 @@ class AppState extends ChangeNotifier {
 
   String get selectedPerson => selectedRoom?.personName ?? 'they';
   List<PredictionMarket> get displayMarkets {
-    final List<PredictionMarket> sorted = List<PredictionMarket>.from(_questions);
+    final List<PredictionMarket> sorted = List<PredictionMarket>.from(
+      _questions,
+    );
     sorted.sort((PredictionMarket a, PredictionMarket b) {
       final int pastCmp = (a.isPast ? 1 : 0).compareTo(b.isPast ? 1 : 0);
       if (pastCmp != 0) {
@@ -69,15 +71,15 @@ class AppState extends ChangeNotifier {
     });
     return sorted;
   }
-  double get betAmount => _betAmount;
 
   /// Bets for the currently selected room only.
   List<UserBet> get roomBets {
     if (_selectedRoomId == null) {
       return <UserBet>[];
     }
-    final List<UserBet> bets =
-        _myBets.where((UserBet b) => b.roomId == _selectedRoomId).toList();
+    final List<UserBet> bets = _myBets
+        .where((UserBet b) => b.roomId == _selectedRoomId)
+        .toList();
     bets.sort((UserBet a, UserBet b) {
       final int pastCmp = (a.isPast ? 1 : 0).compareTo(b.isPast ? 1 : 0);
       if (pastCmp != 0) {
@@ -87,8 +89,7 @@ class AppState extends ChangeNotifier {
     });
     return bets;
   }
-  /// Points balance for the currently selected room only.
-  double get userBalance => selectedRoom?.balancePoints ?? 0;
+
   List<RoomLeaderboard> get roomLeaderboards => _roomLeaderboards;
 
   List<LeaderboardEntry> get leaderboard {
@@ -102,6 +103,7 @@ class AppState extends ChangeNotifier {
     }
     return <LeaderboardEntry>[];
   }
+
   Future<void> _init() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -134,24 +136,23 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshGameData({bool skipProfile = false}) async {
     _setGameLoading(true);
     try {
-      final Future<UserProfile>? profileFuture = skipProfile ? null : _api.fetchMe();
+      final Future<UserProfile>? profileFuture = skipProfile
+          ? null
+          : _api.fetchMe();
       final Future<List<GameRoom>> roomsFuture = _api.fetchRooms();
       final Future<List<UserBet>> betsFuture = _api.fetchMyBets();
 
       if (profileFuture != null) {
-        final List<dynamic> batch = await Future.wait<dynamic>(<Future<dynamic>>[
-          profileFuture,
-          roomsFuture,
-          betsFuture,
-        ]);
+        final List<dynamic> batch = await Future.wait<dynamic>(
+          <Future<dynamic>>[profileFuture, roomsFuture, betsFuture],
+        );
         _user = batch[0] as UserProfile;
         _rooms = batch[1] as List<GameRoom>;
         _myBets = batch[2] as List<UserBet>;
       } else {
-        final List<dynamic> batch = await Future.wait<dynamic>(<Future<dynamic>>[
-          roomsFuture,
-          betsFuture,
-        ]);
+        final List<dynamic> batch = await Future.wait<dynamic>(
+          <Future<dynamic>>[roomsFuture, betsFuture],
+        );
         _rooms = batch[0] as List<GameRoom>;
         _myBets = batch[1] as List<UserBet>;
       }
@@ -165,16 +166,22 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _loadLeaderboardForRoom(String roomId) async {
-    final List<RoomLeaderboard> boards = await _api.fetchLeaderboard(roomId: roomId);
+    final List<RoomLeaderboard> boards = await _api.fetchLeaderboard(
+      roomId: roomId,
+    );
     if (boards.isEmpty) {
       return;
     }
     final RoomLeaderboard board = boards.first;
-    final int index = _roomLeaderboards.indexWhere((RoomLeaderboard b) => b.roomId == roomId);
+    final int index = _roomLeaderboards.indexWhere(
+      (RoomLeaderboard b) => b.roomId == roomId,
+    );
     if (index == -1) {
       _roomLeaderboards = <RoomLeaderboard>[..._roomLeaderboards, board];
     } else {
-      final List<RoomLeaderboard> updated = List<RoomLeaderboard>.from(_roomLeaderboards);
+      final List<RoomLeaderboard> updated = List<RoomLeaderboard>.from(
+        _roomLeaderboards,
+      );
       updated[index] = board;
       _roomLeaderboards = updated;
     }
@@ -204,7 +211,8 @@ class AppState extends ChangeNotifier {
       _selectedRoomId = null;
       return;
     }
-    if (_selectedRoomId == null || !_rooms.any((GameRoom r) => r.id == _selectedRoomId)) {
+    if (_selectedRoomId == null ||
+        !_rooms.any((GameRoom r) => r.id == _selectedRoomId)) {
       _selectedRoomId = _rooms.first.id;
     }
   }
@@ -236,7 +244,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<({bool available, String? message})> checkUsername(String username) async {
+  Future<({bool available, String? message})> checkUsername(
+    String username,
+  ) async {
     return _api.checkUsername(username);
   }
 
@@ -251,10 +261,9 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    await _authenticate(() => _api.register(
-          username: username,
-          password: password,
-        ));
+    await _authenticate(
+      () => _api.register(username: username, password: password),
+    );
   }
 
   Future<void> login({
@@ -268,7 +277,13 @@ class AppState extends ChangeNotifier {
       return;
     }
 
-    await _authenticate(() => _api.login(username: username, password: password));
+    await _authenticate(
+      () => _api.login(username: username, password: password),
+    );
+  }
+
+  Future<void> adminLogin() async {
+    await _authenticate(() => _api.adminLogin());
   }
 
   Future<void> _authenticate(Future<UserProfile> Function() request) async {
@@ -392,51 +407,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateBetAmount(double value) {
-    final double sanitized = value.clamp(1, 5000);
-    if ((_betAmount - sanitized).abs() < 0.001) {
-      return;
-    }
-    _betAmount = sanitized;
-    notifyListeners();
-  }
-
-  double expectedPayout({
-    required PredictionMarket market,
-    required bool isYes,
-    required double bet,
-  }) {
-    final double sidePool = isYes ? market.yesWageredPoints : market.noWageredPoints;
-    final double totalPoolAfterBet = market.totalPot + bet;
-    final double sideAfterBet = sidePool + bet;
-    if (sideAfterBet <= 0) {
-      return 0;
-    }
-    return totalPoolAfterBet * (bet / sideAfterBet);
-  }
-
-  Future<bool> placeBet({
-    required String marketId,
-    required bool isYes,
-  }) async {
+  Future<bool> placeBet({required String marketId, required bool isYes}) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to place bets';
       notifyListeners();
       return false;
     }
-    if (_betAmount > userBalance) {
-      _gameError = 'Not enough points';
-      notifyListeners();
-      return false;
-    }
-
     try {
       final PredictionMarket updated = await _api.placeBet(
         marketId: marketId,
         isYes: isYes,
-        amount: _betAmount,
+        amount: _defaultPickWeight,
       );
-      final int index = _questions.indexWhere((PredictionMarket m) => m.id == marketId);
+      final int index = _questions.indexWhere(
+        (PredictionMarket m) => m.id == marketId,
+      );
       if (index != -1) {
         _questions[index] = updated;
       }
@@ -474,10 +459,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<GameRoom?> joinRoom({
-    required String joinCode,
-    String? roomId,
-  }) async {
+  Future<GameRoom?> joinRoom({required String joinCode, String? roomId}) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to join a room';
       notifyListeners();
@@ -520,18 +502,33 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<GameRoom?> createRoom(String person) async {
+  Future<GameRoom?> createRoom({
+    required List<String> personNames,
+    required bool isGroup,
+  }) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to create a room';
       notifyListeners();
       return null;
     }
-    final String normalizedPerson = person.trim();
-    if (normalizedPerson.isEmpty) {
+    final List<String> normalizedPeople = _normalizePeople(personNames);
+    if (normalizedPeople.isEmpty) {
+      _gameError = 'Add at least one person';
+      notifyListeners();
+      return null;
+    }
+    if (isGroup && normalizedPeople.length < 2) {
+      _gameError = 'Group rooms need at least two people';
+      notifyListeners();
       return null;
     }
     try {
-      final GameRoom room = await _api.createRoom(normalizedPerson);
+      final GameRoom room = await _api.createRoom(
+        personNames: isGroup
+            ? normalizedPeople
+            : <String>[normalizedPeople.first],
+        roomType: isGroup ? 'group' : 'individual',
+      );
       _rooms.insert(0, room);
       _selectedRoomId = room.id;
       _questions = <PredictionMarket>[];
@@ -555,7 +552,25 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<PredictionMarket?> addQuestion(String questionText) async {
+  List<String> _normalizePeople(List<String> people) {
+    final List<String> normalized = <String>[];
+    final Set<String> seen = <String>{};
+    for (final String person in people) {
+      final String value = person.trim();
+      final String key = value.toLowerCase();
+      if (value.isEmpty || seen.contains(key)) {
+        continue;
+      }
+      normalized.add(value);
+      seen.add(key);
+    }
+    return normalized;
+  }
+
+  Future<PredictionMarket?> addQuestion(
+    String questionText, {
+    List<String> targetNames = const <String>[],
+  }) async {
     if (!isLoggedIn || _selectedRoomId == null) {
       _gameError = 'Select a room first';
       notifyListeners();
@@ -566,7 +581,11 @@ class AppState extends ChangeNotifier {
       return null;
     }
     try {
-      final PredictionMarket question = await _api.addQuestion(roomId: _selectedRoomId!, question: q);
+      final PredictionMarket question = await _api.addQuestion(
+        roomId: _selectedRoomId!,
+        question: q,
+        targetNames: targetNames,
+      );
       _questions.insert(0, question);
       _gameError = null;
       notifyListeners();
@@ -596,7 +615,10 @@ class AppState extends ChangeNotifier {
       return false;
     }
     try {
-      await _api.deleteQuestion(roomId: _selectedRoomId!, questionId: questionId);
+      await _api.deleteQuestion(
+        roomId: _selectedRoomId!,
+        questionId: questionId,
+      );
       _questions.removeWhere((PredictionMarket q) => q.id == questionId);
       await Future.wait<void>(<Future<void>>[
         _refreshRooms(),
@@ -633,7 +655,9 @@ class AppState extends ChangeNotifier {
         marketId: marketId,
         winningYes: winningYes,
       );
-      final int index = _questions.indexWhere((PredictionMarket m) => m.id == marketId);
+      final int index = _questions.indexWhere(
+        (PredictionMarket m) => m.id == marketId,
+      );
       if (index != -1) {
         _questions[index] = updated;
       }
@@ -673,7 +697,9 @@ class AppState extends ChangeNotifier {
     if (_user == null) {
       return entries.isEmpty ? 0 : entries.length;
     }
-    final int index = entries.indexWhere((LeaderboardEntry e) => e.userId == _user!.id);
+    final int index = entries.indexWhere(
+      (LeaderboardEntry e) => e.userId == _user!.id,
+    );
     if (index == -1) {
       return entries.isEmpty ? 0 : entries.length;
     }

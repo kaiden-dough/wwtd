@@ -32,6 +32,7 @@ class LeaderboardEntryOut(BaseModel):
 class RoomLeaderboardOut(BaseModel):
     room_id: str
     person_name: str
+    person_names: list[str] = Field(default_factory=list)
     entries: list[LeaderboardEntryOut]
 
 
@@ -74,7 +75,9 @@ class PersonOut(BaseModel):
 
 
 class RoomCreate(BaseModel):
-    person_name: str = Field(min_length=1, max_length=200)
+    person_name: str | None = Field(default=None, min_length=1, max_length=200)
+    person_names: list[str] = Field(default_factory=list)
+    room_type: str = Field(default="individual", pattern="^(individual|group)$")
 
 
 class RoomJoin(BaseModel):
@@ -85,6 +88,8 @@ class RoomJoin(BaseModel):
 class RoomDiscoverOut(BaseModel):
     id: str
     person_name: str
+    person_names: list[str] = Field(default_factory=list)
+    room_type: str = "individual"
     moderator_name: str
     is_member: bool = False
 
@@ -93,6 +98,8 @@ class RoomOut(BaseModel):
     id: str
     join_code: str
     person_name: str
+    person_names: list[str] = Field(default_factory=list)
+    room_type: str = "individual"
     moderator_name: str
     is_moderator: bool = False
     balance_points: float
@@ -101,6 +108,7 @@ class RoomOut(BaseModel):
 
 class QuestionCreate(BaseModel):
     question: str = Field(min_length=1)
+    target_names: list[str] = Field(default_factory=list)
 
 
 class QuestionOut(BaseModel):
@@ -109,6 +117,7 @@ class QuestionOut(BaseModel):
     join_code: str
     person_id: int
     person_name: str
+    target_names: list[str] = Field(default_factory=list)
     question: str
     created_by: str
     is_moderator: bool = False

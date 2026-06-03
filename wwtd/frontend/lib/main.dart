@@ -50,10 +50,9 @@ class AppGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
 
-    if (!appState.sessionReady || (appState.authLoading && !appState.isLoggedIn)) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+    if (!appState.sessionReady ||
+        (appState.authLoading && !appState.isLoggedIn)) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (!appState.isLoggedIn) {
@@ -73,40 +72,14 @@ class AppShell extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         title: Text(
           appState.selectedRoom != null
               ? 'What would ${appState.selectedPerson} do?'
               : 'What Would They Do?',
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
         ),
         centerTitle: false,
         actions: <Widget>[
-          if (appState.selectedRoom != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F1FE),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF165AB0).withValues(alpha: 0.25)),
-                  ),
-                  child: Text(
-                    '${appState.userBalance.toStringAsFixed(0)} pts',
-                    style: const TextStyle(
-                      color: Color(0xFF1454A7),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              ),
-            ),
           IconButton(
             tooltip: 'Account',
             onPressed: () => showAccountSheet(context),

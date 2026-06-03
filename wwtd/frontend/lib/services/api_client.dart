@@ -44,15 +44,20 @@ class ApiClient {
 
   Uri _uri(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
 
-  Future<({bool available, String? message})> checkUsername(String username) async {
+  Future<({bool available, String? message})> checkUsername(
+    String username,
+  ) async {
     final http.Response response = await _client.get(
-      _uri('/api/auth/check-username?username=${Uri.encodeQueryComponent(username.trim())}'),
+      _uri(
+        '/api/auth/check-username?username=${Uri.encodeQueryComponent(username.trim())}',
+      ),
       headers: _headers(),
     );
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
-    final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(response.body) as Map<String, dynamic>;
     return (
       available: body['available'] as bool? ?? false,
       message: body['message'] as String?,
@@ -95,8 +100,20 @@ class ApiClient {
     return _profileFromAuthResponse(response);
   }
 
+  Future<UserProfile> adminLogin() async {
+    final http.Response response = await _client.post(
+      _uri('/api/auth/admin-login'),
+      headers: _headers(jsonBody: true),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return _profileFromAuthResponse(response);
+  }
+
   UserProfile _profileFromAuthResponse(http.Response response) {
-    final Map<String, dynamic> body = jsonDecode(response.body) as Map<String, dynamic>;
+    final Map<String, dynamic> body =
+        jsonDecode(response.body) as Map<String, dynamic>;
     _token = body['access_token'] as String;
     return UserProfile.fromJson(body['profile'] as Map<String, dynamic>);
   }
@@ -109,7 +126,9 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<UserProfile> updateDisplayName(String displayName) async {
@@ -121,7 +140,9 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
-    return UserProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return UserProfile.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<PredictionMarket>> fetchMarkets() async {
@@ -134,7 +155,9 @@ class ApiClient {
     }
     final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
     return list
-        .map((dynamic e) => PredictionMarket.fromJson(e as Map<String, dynamic>))
+        .map(
+          (dynamic e) => PredictionMarket.fromJson(e as Map<String, dynamic>),
+        )
         .toList();
   }
 
@@ -154,7 +177,9 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
-    return PredictionMarket.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return PredictionMarket.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<GameRoom>> fetchRooms() async {
@@ -166,14 +191,22 @@ class ApiClient {
       throw _errorFromResponse(response);
     }
     final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
-    return list.map((dynamic e) => GameRoom.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((dynamic e) => GameRoom.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<GameRoom> createRoom(String personName) async {
+  Future<GameRoom> createRoom({
+    required List<String> personNames,
+    required String roomType,
+  }) async {
     final http.Response response = await _client.post(
       _uri('/api/rooms'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, String>{'person_name': personName.trim()}),
+      body: jsonEncode(<String, dynamic>{
+        'person_names': personNames.map((String name) => name.trim()).toList(),
+        'room_type': roomType,
+      }),
     );
     if (response.statusCode != 201) {
       throw _errorFromResponse(response);
@@ -194,13 +227,12 @@ class ApiClient {
       throw _errorFromResponse(response);
     }
     final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
-    return list.map((dynamic e) => RoomDiscover.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((dynamic e) => RoomDiscover.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<GameRoom> joinRoom({
-    required String joinCode,
-    String? roomId,
-  }) async {
+  Future<GameRoom> joinRoom({required String joinCode, String? roomId}) async {
     final Map<String, String> body = <String, String>{
       'join_code': joinCode.trim().toUpperCase(),
     };
@@ -228,23 +260,31 @@ class ApiClient {
     }
     final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
     return list
-        .map((dynamic e) => PredictionMarket.fromJson(e as Map<String, dynamic>))
+        .map(
+          (dynamic e) => PredictionMarket.fromJson(e as Map<String, dynamic>),
+        )
         .toList();
   }
 
   Future<PredictionMarket> addQuestion({
     required String roomId,
     required String question,
+    List<String> targetNames = const <String>[],
   }) async {
     final http.Response response = await _client.post(
       _uri('/api/rooms/$roomId/questions'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, String>{'question': question.trim()}),
+      body: jsonEncode(<String, dynamic>{
+        'question': question.trim(),
+        'target_names': targetNames,
+      }),
     );
     if (response.statusCode != 201) {
       throw _errorFromResponse(response);
     }
-    return PredictionMarket.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return PredictionMarket.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<void> deleteQuestion({
@@ -274,7 +314,9 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
-    return PredictionMarket.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return PredictionMarket.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<RoomLeaderboard>> fetchLeaderboard({String? roomId}) async {
@@ -302,7 +344,9 @@ class ApiClient {
       throw _errorFromResponse(response);
     }
     final List<dynamic> list = jsonDecode(response.body) as List<dynamic>;
-    return list.map((dynamic e) => UserBet.fromJson(e as Map<String, dynamic>)).toList();
+    return list
+        .map((dynamic e) => UserBet.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   ApiException _errorFromResponse(http.Response response) {

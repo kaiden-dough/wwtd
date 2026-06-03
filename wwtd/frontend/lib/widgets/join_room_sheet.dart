@@ -8,12 +8,13 @@ import 'package:wwtd/models/room_discover.dart';
 import 'package:wwtd/providers/app_state.dart';
 
 Future<void> showJoinRoomSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
+  return showDialog<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
     builder: (BuildContext sheetContext) {
-      return const _JoinRoomSheet();
+      return const Dialog(
+        insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: _JoinRoomSheet(),
+      );
     },
   );
 }
@@ -44,7 +45,10 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _runSearch(value));
+    _debounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _runSearch(value),
+    );
   }
 
   Future<void> _runSearch(String query) async {
@@ -68,7 +72,8 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
     setState(() {
       _results = found;
       _searching = false;
-      if (_selected != null && !found.any((RoomDiscover r) => r.id == _selected!.id)) {
+      if (_selected != null &&
+          !found.any((RoomDiscover r) => r.id == _selected!.id)) {
         _selected = null;
       }
     });
@@ -91,9 +96,9 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
         SnackBar(content: Text('Joined ${joined.personName}\'s room')),
       );
     } else if (appState.gameError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(appState.gameError!)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(appState.gameError!)));
     }
   }
 
@@ -103,23 +108,29 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
 
     return Padding(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: 20 + MediaQuery.viewInsetsOf(context).bottom,
       ),
       child: SizedBox(
+        width: 520,
         height: MediaQuery.sizeOf(context).height * 0.72,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               'Join room',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
               'Search for a room, then enter the join code from the moderator.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -143,9 +154,7 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
               onChanged: _onSearchChanged,
             ),
             const SizedBox(height: 12),
-            Expanded(
-              child: _buildResults(),
-            ),
+            Expanded(child: _buildResults()),
             const SizedBox(height: 12),
             TextField(
               controller: _codeController,
@@ -175,7 +184,9 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(_selected?.isMember == true ? 'Open room' : 'Join room'),
+                  : Text(
+                      _selected?.isMember == true ? 'Open room' : 'Join room',
+                    ),
             ),
           ],
         ),
@@ -192,7 +203,9 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
         child: Text(
           'Search by who the room is about or the moderator\'s username.',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
         ),
       );
     }
@@ -200,13 +213,16 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
       return Center(
         child: Text(
           'No rooms found.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
         ),
       );
     }
     return ListView.separated(
       itemCount: _results.length,
-      separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 8),
+      separatorBuilder: (BuildContext context, int index) =>
+          const SizedBox(height: 8),
       itemBuilder: (BuildContext context, int index) {
         final RoomDiscover room = _results[index];
         final bool selected = _selected?.id == room.id;
@@ -221,7 +237,9 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
               child: Row(
                 children: <Widget>[
                   Icon(
-                    selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
                     color: const Color(0xFF165AB0),
                     size: 20,
                   ),
@@ -232,18 +250,21 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
                       children: <Widget>[
                         Text(
                           room.personName,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
                         ),
                         Text(
                           'Moderator: ${room.moderatorName}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: const Color(0xFF607182),
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF607182)),
                         ),
                         if (room.isMember)
                           Text(
                             'Already in room',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
                                   color: const Color(0xFF1454A7),
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -253,7 +274,10 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
                   ),
                   if (room.isMember)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE8F1FE),
                         borderRadius: BorderRadius.circular(8),

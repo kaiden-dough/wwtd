@@ -4,6 +4,7 @@ class PredictionMarket {
     required this.roomId,
     required this.joinCode,
     required this.person,
+    required this.targetNames,
     required this.question,
     required this.yesWageredPoints,
     required this.noWageredPoints,
@@ -21,6 +22,7 @@ class PredictionMarket {
   final String roomId;
   final String joinCode;
   final String person;
+  final List<String> targetNames;
   final String question;
   final double yesWageredPoints;
   final double noWageredPoints;
@@ -39,8 +41,10 @@ class PredictionMarket {
   bool get isPast => isResolved || !bettingOpen;
 
   double get totalPot => yesWageredPoints + noWageredPoints;
-  double get yesPercent => totalPot == 0 ? 50 : (yesWageredPoints / totalPot) * 100;
-  double get noPercent => totalPot == 0 ? 50 : (noWageredPoints / totalPot) * 100;
+  double get yesPercent =>
+      totalPot == 0 ? 50 : (yesWageredPoints / totalPot) * 100;
+  double get noPercent =>
+      totalPot == 0 ? 50 : (noWageredPoints / totalPot) * 100;
 
   factory PredictionMarket.fromJson(Map<String, dynamic> json) {
     return PredictionMarket(
@@ -48,6 +52,11 @@ class PredictionMarket {
       roomId: json['room_id'] as String,
       joinCode: json['join_code'] as String,
       person: json['person_name'] as String,
+      targetNames:
+          ((json['target_names'] as List<dynamic>?) ??
+                  <dynamic>[json['person_name']])
+              .whereType<String>()
+              .toList(growable: false),
       question: json['question'] as String,
       createdBy: json['created_by'] as String,
       isModerator: json['is_moderator'] as bool? ?? false,
@@ -77,6 +86,7 @@ class PredictionMarket {
       roomId: roomId,
       joinCode: joinCode,
       person: person,
+      targetNames: targetNames,
       question: question,
       createdBy: createdBy,
       createdAt: createdAt,

@@ -5,19 +5,13 @@ import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
 
 class MarketCard extends StatelessWidget {
-  const MarketCard({
-    required this.market,
-    super.key,
-  });
+  const MarketCard({required this.market, super.key});
 
   final PredictionMarket market;
 
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
-    final double betAmount = appState.betAmount;
-    final double yesPayout = appState.expectedPayout(market: market, isYes: true, bet: betAmount);
-    final double noPayout = appState.expectedPayout(market: market, isYes: false, bet: betAmount);
     final bool canBet = appState.isLoggedIn && market.isBettingOpen;
     final bool canResolve = appState.canResolveMarket(market);
     final bool canDelete = appState.canDeleteQuestion(market);
@@ -34,8 +28,20 @@ class MarketCard extends StatelessWidget {
           children: <Widget>[
             Text(
               market.question,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
+            if (market.targetNames.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(
+                'For ${market.targetNames.join(', ')}',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: const Color(0xFF1454A7),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _oddsGraph(context, market),
             const SizedBox(height: 10),
@@ -59,33 +65,37 @@ class MarketCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Total pot: ${_formatPoints(market.totalPot)} points',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF526170)),
+              'Yes ${market.yesPercent.toStringAsFixed(0)}% · No ${market.noPercent.toStringAsFixed(0)}%',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF526170)),
             ),
             if (market.isResolved) ...<Widget>[
               const SizedBox(height: 8),
               Text(
                 'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won — betting closed',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF1454A7),
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: const Color(0xFF1454A7),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ] else if (!market.bettingOpen) ...<Widget>[
               const SizedBox(height: 8),
               Text(
                 'Betting closed — 24 hours have passed',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF607182),
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: const Color(0xFF607182),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
             if (market.userYesBet > 0 || market.userNoBet > 0) ...<Widget>[
               const SizedBox(height: 6),
               Text(
-                'Your bets — Yes: ${_formatPoints(market.userYesBet)} | No: ${_formatPoints(market.userNoBet)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+                'Your picks — Yes: ${market.userYesBet > 0 ? 'picked' : 'none'} | No: ${market.userNoBet > 0 ? 'picked' : 'none'}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
               ),
             ],
             const SizedBox(height: 14),
@@ -118,18 +128,24 @@ class MarketCard extends StatelessWidget {
             else if (!appState.isLoggedIn)
               Text(
                 'Sign in to bet',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF607182),
+                ),
               )
             else if (!market.isBettingOpen)
               Text(
                 'Betting is locked on this question',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF607182),
+                ),
               ),
             if (canResolve) ...<Widget>[
               const SizedBox(height: 10),
               Text(
                 'Moderator: pick the outcome to pay winners',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: const Color(0xFF607182)),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: const Color(0xFF607182),
+                ),
               ),
               const SizedBox(height: 8),
               Row(
@@ -155,28 +171,12 @@ class MarketCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => _confirmDelete(context),
                 icon: const Icon(Icons.delete_outline, size: 18),
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFFB24338)),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFB24338),
+                ),
                 label: const Text('Delete question (refund all bets)'),
               ),
             ],
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F8FC),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Bet ${betAmount.toStringAsFixed(0)} points -> '
-                'Yes wins ${yesPayout.toStringAsFixed(1)} | '
-                'No wins ${noPayout.toStringAsFixed(1)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF314355),
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
           ],
         ),
       ),
@@ -191,26 +191,38 @@ class MarketCard extends StatelessWidget {
     }
     final String? message = appState.gameError;
     if (!ok && message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } else if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bet placed')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bet placed')));
     }
   }
 
-  Future<void> _resolve(BuildContext context, {required bool winningYes}) async {
+  Future<void> _resolve(
+    BuildContext context, {
+    required bool winningYes,
+  }) async {
     final AppState appState = context.read<AppState>();
-    final bool ok = await appState.resolveMarket(marketId: market.id, winningYes: winningYes);
+    final bool ok = await appState.resolveMarket(
+      marketId: market.id,
+      winningYes: winningYes,
+    );
     if (!context.mounted) {
       return;
     }
     final String? message = appState.gameError;
     if (!ok && message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } else if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Market resolved — ${winningYes ? 'Yes' : 'No'} wins')),
+        SnackBar(
+          content: Text('Market resolved — ${winningYes ? 'Yes' : 'No'} wins'),
+        ),
       );
     }
   }
@@ -230,7 +242,9 @@ class MarketCard extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB24338)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB24338),
+              ),
               onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Delete & refund'),
             ),
@@ -251,24 +265,19 @@ class MarketCard extends StatelessWidget {
         const SnackBar(content: Text('Question deleted — bets refunded')),
       );
     } else if (appState.gameError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(appState.gameError!)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(appState.gameError!)));
     }
   }
 
   Widget _oddsGraph(BuildContext context, PredictionMarket market) {
     return _OddsTrendChart(market: market);
   }
-
-  String _formatPoints(double points) => points.toStringAsFixed(0);
 }
 
 class _TrendPoint {
-  const _TrendPoint({
-    required this.timestamp,
-    required this.yesPercent,
-  });
+  const _TrendPoint({required this.timestamp, required this.yesPercent});
 
   final DateTime timestamp;
   final double yesPercent;
@@ -303,7 +312,8 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
   void didUpdateWidget(covariant _OddsTrendChart oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.market.id != widget.market.id ||
-        (oldWidget.market.yesPercent - widget.market.yesPercent).abs() > 0.001) {
+        (oldWidget.market.yesPercent - widget.market.yesPercent).abs() >
+            0.001) {
       _points = _generateTrendSeries(widget.market);
       _hoveredIndex = null;
     }
@@ -315,19 +325,29 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
-        final double plotWidth = math.max(1, width - _leftPadding - _rightPadding);
-        final int hoverIndex = (_hoveredIndex ?? (_points.length - 1)).clamp(0, _points.length - 1);
+        final double plotWidth = math.max(
+          1,
+          width - _leftPadding - _rightPadding,
+        );
+        final int hoverIndex = (_hoveredIndex ?? (_points.length - 1)).clamp(
+          0,
+          _points.length - 1,
+        );
         final _TrendPoint hovered = _points[hoverIndex];
-        final double hoverX = _leftPadding + _xForIndex(hoverIndex, plotWidth, _points.length);
+        final double hoverX =
+            _leftPadding + _xForIndex(hoverIndex, plotWidth, _points.length);
         final double hoverY = _yForPercent(hovered.yesPercent, _chartHeight);
 
         return MouseRegion(
-          onHover: (event) => _updateHoverIndex(event.localPosition.dx, plotWidth),
+          onHover: (event) =>
+              _updateHoverIndex(event.localPosition.dx, plotWidth),
           onExit: (_) => setState(() => _hoveredIndex = null),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPanDown: (DragDownDetails details) => _updateHoverIndex(details.localPosition.dx, plotWidth),
-            onPanUpdate: (DragUpdateDetails details) => _updateHoverIndex(details.localPosition.dx, plotWidth),
+            onPanDown: (DragDownDetails details) =>
+                _updateHoverIndex(details.localPosition.dx, plotWidth),
+            onPanUpdate: (DragUpdateDetails details) =>
+                _updateHoverIndex(details.localPosition.dx, plotWidth),
             onPanEnd: (_) => setState(() => _hoveredIndex = null),
             child: SizedBox(
               height: _chartHeight + 32,
@@ -362,13 +382,21 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
                   ),
                   Positioned(
                     right: 2,
-                    top: (_yForPercent(latest.yesPercent, _chartHeight) - 8).clamp(0, _chartHeight - 16),
-                    child: _lineValueLabel('${latest.yesPercent.toStringAsFixed(0)}%', _yesColor),
+                    top: (_yForPercent(latest.yesPercent, _chartHeight) - 8)
+                        .clamp(0, _chartHeight - 16),
+                    child: _lineValueLabel(
+                      '${latest.yesPercent.toStringAsFixed(0)}%',
+                      _yesColor,
+                    ),
                   ),
                   Positioned(
                     right: 2,
-                    top: (_yForPercent(latest.noPercent, _chartHeight) - 8).clamp(0, _chartHeight - 16),
-                    child: _lineValueLabel('${latest.noPercent.toStringAsFixed(0)}%', _noColor),
+                    top: (_yForPercent(latest.noPercent, _chartHeight) - 8)
+                        .clamp(0, _chartHeight - 16),
+                    child: _lineValueLabel(
+                      '${latest.noPercent.toStringAsFixed(0)}%',
+                      _noColor,
+                    ),
                   ),
                 ],
               ),
@@ -387,7 +415,9 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: DefaultTextStyle(
-        style: Theme.of(context).textTheme.labelSmall!.copyWith(color: Colors.white),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall!.copyWith(color: Colors.white),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -413,10 +443,10 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
 
   Widget _yAxisLabels(BuildContext context) {
     final TextStyle style = Theme.of(context).textTheme.labelSmall!.copyWith(
-          color: const Color(0xFF94A3B8),
-          fontWeight: FontWeight.w600,
-          fontSize: 10,
-        );
+      color: const Color(0xFF94A3B8),
+      fontWeight: FontWeight.w600,
+      fontSize: 10,
+    );
     return SizedBox(
       width: _leftPadding - 4,
       child: Column(
@@ -435,7 +465,9 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
 
   void _updateHoverIndex(double localX, double plotWidth) {
     final double clampedX = (localX - _leftPadding).clamp(0, plotWidth);
-    final int index = ((clampedX / plotWidth) * (_points.length - 1)).round().clamp(0, _points.length - 1);
+    final int index = ((clampedX / plotWidth) * (_points.length - 1))
+        .round()
+        .clamp(0, _points.length - 1);
     if (_hoveredIndex == index) {
       return;
     }
@@ -443,15 +475,23 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
   }
 
   List<_TrendPoint> _generateTrendSeries(PredictionMarket market) {
-    final int seed = market.id.codeUnits.fold<int>(0, (int sum, int unit) => sum + unit);
+    final int seed = market.id.codeUnits.fold<int>(
+      0,
+      (int sum, int unit) => sum + unit,
+    );
     final math.Random random = math.Random(seed);
     const int pointCount = 25;
     final DateTime end = DateTime.now();
     final DateTime start = end.subtract(const Duration(hours: 24));
-    final Duration step = Duration(minutes: (24 * 60 / (pointCount - 1)).round());
+    final Duration step = Duration(
+      minutes: (24 * 60 / (pointCount - 1)).round(),
+    );
     final List<double> raw = <double>[];
 
-    double yes = (market.yesPercent + (random.nextDouble() * 16 - 8)).clamp(10, 90);
+    double yes = (market.yesPercent + (random.nextDouble() * 16 - 8)).clamp(
+      10,
+      90,
+    );
     raw.add(yes);
     for (int i = 1; i < pointCount; i++) {
       yes = (yes + (random.nextDouble() * 10 - 5)).clamp(5, 95);
@@ -463,11 +503,15 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
         .map((double value) => (value + delta).clamp(3, 97).toDouble())
         .toList(growable: false);
 
-    final List<double> smoothed = List<double>.generate(shifted.length, (int i) {
+    final List<double> smoothed = List<double>.generate(shifted.length, (
+      int i,
+    ) {
       if (i == 0 || i == shifted.length - 1) {
         return shifted[i];
       }
-      return (shifted[i - 1] * 0.25) + (shifted[i] * 0.5) + (shifted[i + 1] * 0.25);
+      return (shifted[i - 1] * 0.25) +
+          (shifted[i] * 0.5) +
+          (shifted[i + 1] * 0.25);
     });
     smoothed[smoothed.length - 1] = market.yesPercent.clamp(0, 100).toDouble();
 
@@ -517,15 +561,22 @@ class _OddsTrendPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double plotWidth = math.max(1, size.width - leftPadding - rightPadding);
+    final double plotWidth = math.max(
+      1,
+      size.width - leftPadding - rightPadding,
+    );
     final double plotHeight = size.height;
     final List<Offset> yesPoints = _toOffsets(
-      values: points.map((_TrendPoint point) => point.yesPercent).toList(growable: false),
+      values: points
+          .map((_TrendPoint point) => point.yesPercent)
+          .toList(growable: false),
       width: plotWidth,
       height: plotHeight,
     );
     final List<Offset> noPoints = _toOffsets(
-      values: points.map((_TrendPoint point) => point.noPercent).toList(growable: false),
+      values: points
+          .map((_TrendPoint point) => point.noPercent)
+          .toList(growable: false),
       width: plotWidth,
       height: plotHeight,
     );
@@ -550,8 +601,11 @@ class _OddsTrendPainter extends CustomPainter {
     canvas.drawPath(yesPath, yesPaint);
     canvas.drawPath(noPath, noPaint);
 
-    if (hoveredIndex != null && hoveredIndex! >= 0 && hoveredIndex! < points.length) {
-      final double x = leftPadding + (hoveredIndex! / (points.length - 1)) * plotWidth;
+    if (hoveredIndex != null &&
+        hoveredIndex! >= 0 &&
+        hoveredIndex! < points.length) {
+      final double x =
+          leftPadding + (hoveredIndex! / (points.length - 1)) * plotWidth;
       final Paint crosshair = Paint()
         ..color = const Color(0xFF64748B).withValues(alpha: 0.35)
         ..strokeWidth = 1;
@@ -565,7 +619,11 @@ class _OddsTrendPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (final double p in <double>[25, 50, 75]) {
       final double y = (1 - p / 100) * size.height;
-      canvas.drawLine(Offset(leftPadding, y), Offset(size.width - rightPadding, y), paint);
+      canvas.drawLine(
+        Offset(leftPadding, y),
+        Offset(size.width - rightPadding, y),
+        paint,
+      );
     }
   }
 
@@ -589,14 +647,28 @@ class _OddsTrendPainter extends CustomPainter {
     for (int i = 1; i < points.length; i++) {
       final Offset previous = points[i - 1];
       final Offset current = points[i];
-      final Offset midpoint = Offset((previous.dx + current.dx) / 2, (previous.dy + current.dy) / 2);
-      path.quadraticBezierTo(previous.dx, previous.dy, midpoint.dx, midpoint.dy);
+      final Offset midpoint = Offset(
+        (previous.dx + current.dx) / 2,
+        (previous.dy + current.dy) / 2,
+      );
+      path.quadraticBezierTo(
+        previous.dx,
+        previous.dy,
+        midpoint.dx,
+        midpoint.dy,
+      );
     }
     path.lineTo(points.last.dx, points.last.dy);
     return path;
   }
 
-  void _drawFill(Canvas canvas, Path linePath, List<Offset> points, double height, Color color) {
+  void _drawFill(
+    Canvas canvas,
+    Path linePath,
+    List<Offset> points,
+    double height,
+    Color color,
+  ) {
     final Path fillPath = Path.from(linePath)
       ..lineTo(points.last.dx, height)
       ..lineTo(points.first.dx, height)
