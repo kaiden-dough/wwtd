@@ -286,6 +286,10 @@ class AppState extends ChangeNotifier {
     await _authenticate(() => _api.adminLogin());
   }
 
+  Future<void> tempUserLogin() async {
+    await _authenticate(() => _api.tempUserLogin());
+  }
+
   Future<void> _authenticate(Future<UserProfile> Function() request) async {
     _setAuthLoading(true);
     _authError = null;
@@ -409,7 +413,7 @@ class AppState extends ChangeNotifier {
 
   Future<bool> placeBet({required String marketId, required bool isYes}) async {
     if (!isLoggedIn) {
-      _gameError = 'Sign in to place bets';
+      _gameError = 'Sign in to place picks';
       notifyListeners();
       return false;
     }
@@ -442,7 +446,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return false;
     } catch (e) {
-      _gameError = 'Bet failed: $e';
+      _gameError = 'Pick failed: $e';
       notifyListeners();
       return false;
     }
@@ -684,8 +688,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> undoResolveMarket({required String marketId}) async {
+    if (!isLoggedIn) {
+      return false;
+    }
+    try {
+      final PredictionMarket updated = await _api.undoResolveMarket(
+        marketId: marketId,
+      );
+      final int index = _questions.indexWhere(
+        (PredictionMarket m) => m.id == marketId,
+      );
+      if (index != -1) {
+        _questions[index] = updated;
+      }
+      await Future.wait<void>(<Future<void>>[
+        _refreshRooms(),
+        _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
+        if (_selectedRoomId != null) _loadLeaderboardForRoom(_selectedRoomId!),
+      ]);
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Undo resolve failed: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
   bool canResolveMarket(PredictionMarket market) {
-    return isLoggedIn && market.isOpen && (selectedRoom?.isModerator ?? false);
+    return isLoggedIn &&
+        (market.isOpen || market.isResolved) &&
+        (selectedRoom?.isModerator ?? false);
   }
 
   bool canDeleteQuestion(PredictionMarket market) {

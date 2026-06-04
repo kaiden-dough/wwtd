@@ -70,7 +70,7 @@ class _BetHistorySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          roomLabel != null ? 'Your bets in $roomLabel\'s room' : 'Your bets',
+          roomLabel != null ? 'Your picks in $roomLabel\'s room' : 'Your picks',
           style: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -78,14 +78,14 @@ class _BetHistorySection extends StatelessWidget {
         const SizedBox(height: 8),
         if (roomLabel == null)
           Text(
-            'Select a room to see bets for that room.',
+            'Select a room to see picks for that room.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
           )
         else if (bets.isEmpty)
           Text(
-            'No bets in this room yet.',
+            'No picks in this room yet.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),

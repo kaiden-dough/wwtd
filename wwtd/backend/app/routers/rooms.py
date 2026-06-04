@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,12 +9,13 @@ from app.auth import get_current_profile
 from app.db import get_db
 from app.market_codes import generate_join_code
 from app.models import Bet, Person, Profile, Question, QuestionTarget, Room, RoomMember, RoomPerson
-from app.payouts import resolve_question
+from app.payouts import resolve_question, unresolve_question
 from app.question_betting import betting_open_for, is_betting_open
 from app.refunds import refund_question_bets
-from app.room_balance import deduct_room_balance, get_room_member, starting_balance
+from app.room_balance import credit_room_balance, deduct_room_balance, get_room_member, starting_balance
 from app.schemas import (
     BetCreate,
+    PickHistoryOut,
     QuestionCreate,
     QuestionOut,
     QuestionResolve,
@@ -82,6 +84,22 @@ def _question_target_names(db: Session, question_id: str, fallback_name: str) ->
         .order_by(QuestionTarget.sort_order.asc(), Person.name.asc())
     ).scalars().all()
     return list(rows) if rows else [fallback_name]
+
+
+def _pick_history(db: Session, question_id: str) -> list[PickHistoryOut]:
+    rows = db.execute(
+        select(Bet.side, Bet.amount, Bet.created_at)
+        .where(Bet.question_id == question_id)
+        .order_by(Bet.created_at.asc(), Bet.id.asc())
+    ).all()
+    return [
+        PickHistoryOut(
+            side=row.side,
+            amount=float(row.amount),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
 
 
 def _is_member(db: Session, room_id: str, user_id: str) -> bool:
@@ -240,6 +258,7 @@ def _run_questions_query(
             no_wagered_points=float(m.no_total or 0),
             user_yes_bet=float(m.user_yes or 0),
             user_no_bet=float(m.user_no or 0),
+            pick_history=_pick_history(db, m.id),
         )
         for m in rows
     ]
@@ -288,23 +307,40 @@ def discover_rooms(
 ) -> list[RoomDiscoverOut]:
     """Search rooms by subject name or moderator. Join code is never returned."""
     term = q.strip()
-    if len(term) < 1:
-        return []
-
-    pattern = f"%{term}%"
     SearchPerson = aliased(Person)
-    person_match = exists().where(
-        and_(
-            RoomPerson.room_id == Room.id,
-            RoomPerson.person_id == SearchPerson.id,
-            SearchPerson.name.ilike(pattern),
-        )
-    )
+    member_count = func.count(RoomMember.id)
     stmt = (
-        select(Room, Person, Profile)
+        select(Room, Person, Profile, member_count.label("member_count"))
         .join(Person, Room.person_id == Person.id)
         .join(Profile, Room.created_by == Profile.id)
-        .where(
+        .outerjoin(RoomMember, RoomMember.room_id == Room.id)
+        .group_by(
+            Room.id,
+            Room.join_code,
+            Room.person_id,
+            Room.room_type,
+            Room.created_by,
+            Room.created_at,
+            Person.id,
+            Person.name,
+            Profile.id,
+            Profile.username,
+            Profile.display_name,
+            Profile.email,
+        )
+        .order_by(member_count.desc(), Room.created_at.desc())
+        .limit(5)
+    )
+    if term:
+        pattern = f"%{term}%"
+        person_match = exists().where(
+            and_(
+                RoomPerson.room_id == Room.id,
+                RoomPerson.person_id == SearchPerson.id,
+                SearchPerson.name.ilike(pattern),
+            )
+        )
+        stmt = stmt.where(
             or_(
                 Person.name.ilike(pattern),
                 person_match,
@@ -312,12 +348,9 @@ def discover_rooms(
                 Profile.display_name.ilike(pattern),
             )
         )
-        .order_by(Room.created_at.desc())
-        .limit(25)
-    )
     rows = db.execute(stmt).all()
     results: list[RoomDiscoverOut] = []
-    for room, person, moderator in rows:
+    for room, person, moderator, members in rows:
         person_names = _room_person_names(db, room, person)
         results.append(
             RoomDiscoverOut(
@@ -326,6 +359,7 @@ def discover_rooms(
                 person_names=person_names,
                 room_type=room.room_type,
                 moderator_name=_moderator_label(moderator),
+                member_count=int(members or 0),
                 is_member=_is_member(db, room.id, profile.id),
             )
         )
@@ -526,30 +560,43 @@ def place_bet(
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
     _require_member(db, room, profile)
+    member = get_room_member(db, question.room_id, profile.id)
     if question.status != "open":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not open for betting")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not open for picking")
     if not is_betting_open(question):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            detail="Betting is closed (24 hours have passed or question was resolved)",
+            detail="Picking is closed (24 hours have passed or question was resolved)",
         )
 
     amount = float(body.amount)
-    member = get_room_member(db, question.room_id, profile.id)
-    deduct_room_balance(member, amount)
-    db.add(
-        Bet(
-            question_id=question.id,
-            user_id=profile.id,
-            side=body.side.lower(),
-            amount=amount,
-        )
+    side = body.side.lower()
+    existing_bet = db.scalar(
+        select(Bet).where(Bet.question_id == question.id, Bet.user_id == profile.id)
     )
+    if existing_bet is not None:
+        credit_room_balance(db, question.room_id, profile.id, existing_bet.amount)
+
+    deduct_room_balance(member, amount)
+    if existing_bet is None:
+        db.add(
+            Bet(
+                question_id=question.id,
+                user_id=profile.id,
+                side=side,
+                amount=amount,
+            )
+        )
+    else:
+        existing_bet.side = side
+        existing_bet.amount = amount
+        existing_bet.payout_amount = None
+        existing_bet.created_at = datetime.now(UTC)
     db.commit()
 
     rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
     if not rows:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Bet failed")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Pick failed")
     return rows[0]
 
 
@@ -568,8 +615,8 @@ def resolve_question_endpoint(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
     if not _is_moderator(room, profile):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can resolve questions")
-    if question.status != "open":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is already resolved")
+    if question.status not in ("open", "resolved"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question cannot be resolved")
 
     resolve_question(db, question, body.winning_side.lower())
     db.commit()
@@ -577,4 +624,30 @@ def resolve_question_endpoint(
     rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
     if not rows:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Resolve failed")
+    return rows[0]
+
+
+@markets_router.post("/{question_id}/unresolve", response_model=QuestionOut)
+def unresolve_question_endpoint(
+    question_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> QuestionOut:
+    question = db.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Question not found")
+    room = db.get(Room, question.room_id)
+    if room is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+    if not _is_moderator(room, profile):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can undo resolves")
+    if question.status != "resolved":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not resolved")
+
+    unresolve_question(db, question)
+    db.commit()
+
+    rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
+    if not rows:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Undo resolve failed")
     return rows[0]

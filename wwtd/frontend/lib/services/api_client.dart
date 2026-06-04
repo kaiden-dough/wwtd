@@ -111,6 +111,17 @@ class ApiClient {
     return _profileFromAuthResponse(response);
   }
 
+  Future<UserProfile> tempUserLogin() async {
+    final http.Response response = await _client.post(
+      _uri('/api/auth/temp-user-login'),
+      headers: _headers(jsonBody: true),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return _profileFromAuthResponse(response);
+  }
+
   UserProfile _profileFromAuthResponse(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(response.body) as Map<String, dynamic>;
@@ -216,9 +227,6 @@ class ApiClient {
 
   Future<List<RoomDiscover>> discoverRooms(String query) async {
     final String q = query.trim();
-    if (q.isEmpty) {
-      return <RoomDiscover>[];
-    }
     final http.Response response = await _client.get(
       _uri('/api/rooms/discover?q=${Uri.encodeQueryComponent(q)}'),
       headers: _headers(),
@@ -310,6 +318,19 @@ class ApiClient {
       body: jsonEncode(<String, dynamic>{
         'winning_side': winningYes ? 'yes' : 'no',
       }),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return PredictionMarket.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<PredictionMarket> undoResolveMarket({required String marketId}) async {
+    final http.Response response = await _client.post(
+      _uri('/api/markets/$marketId/unresolve'),
+      headers: _headers(jsonBody: true),
     );
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);

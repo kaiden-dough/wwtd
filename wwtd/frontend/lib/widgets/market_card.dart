@@ -32,6 +32,13 @@ class MarketCard extends StatelessWidget {
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Created ${_formatCreatedAt(market.createdAt)}',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+            ),
             if (market.targetNames.isNotEmpty) ...<Widget>[
               const SizedBox(height: 6),
               Text(
@@ -43,7 +50,15 @@ class MarketCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            _oddsGraph(context, market),
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _oddsGraph(context, market),
+            ),
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(999),
@@ -65,7 +80,9 @@ class MarketCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Yes ${market.yesPercent.toStringAsFixed(0)}% · No ${market.noPercent.toStringAsFixed(0)}%',
+              market.pickHistory.isEmpty
+                  ? 'Yes N/A · No N/A'
+                  : 'Yes ${market.yesPercent.toStringAsFixed(0)}% · No ${market.noPercent.toStringAsFixed(0)}%',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF526170)),
@@ -73,7 +90,7 @@ class MarketCard extends StatelessWidget {
             if (market.isResolved) ...<Widget>[
               const SizedBox(height: 8),
               Text(
-                'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won — betting closed',
+                'Resolved: ${market.winningSide?.toUpperCase() ?? '?'} won — picking closed',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: const Color(0xFF1454A7),
                   fontWeight: FontWeight.w700,
@@ -82,7 +99,7 @@ class MarketCard extends StatelessWidget {
             ] else if (!market.bettingOpen) ...<Widget>[
               const SizedBox(height: 8),
               Text(
-                'Betting closed — 24 hours have passed',
+                'Picking closed — 24 hours have passed',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: const Color(0xFF607182),
                   fontWeight: FontWeight.w700,
@@ -92,7 +109,7 @@ class MarketCard extends StatelessWidget {
             if (market.userYesBet > 0 || market.userNoBet > 0) ...<Widget>[
               const SizedBox(height: 6),
               Text(
-                'Your picks — Yes: ${market.userYesBet > 0 ? 'picked' : 'none'} | No: ${market.userNoBet > 0 ? 'picked' : 'none'}',
+                'Your pick: ${market.userYesBet > 0 ? 'Yes' : 'No'}',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
@@ -109,7 +126,9 @@ class MarketCard extends StatelessWidget {
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () => _placeBet(context, isYes: true),
-                      child: const Text('Bet Yes'),
+                      child: Text(
+                        market.userYesBet > 0 ? 'Picked Yes' : 'Pick Yes',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -120,21 +139,23 @@ class MarketCard extends StatelessWidget {
                         foregroundColor: const Color(0xFFB24338),
                       ),
                       onPressed: () => _placeBet(context, isYes: false),
-                      child: const Text('Bet No'),
+                      child: Text(
+                        market.userNoBet > 0 ? 'Picked No' : 'Pick No',
+                      ),
                     ),
                   ),
                 ],
               )
             else if (!appState.isLoggedIn)
               Text(
-                'Sign in to bet',
+                'Sign in to pick',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xFF607182),
                 ),
               )
             else if (!market.isBettingOpen)
               Text(
-                'Betting is locked on this question',
+                'Picking is locked on this question',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xFF607182),
                 ),
@@ -142,7 +163,9 @@ class MarketCard extends StatelessWidget {
             if (canResolve) ...<Widget>[
               const SizedBox(height: 10),
               Text(
-                'Moderator: pick the outcome to pay winners',
+                market.isResolved
+                    ? 'Moderator: change the awarded outcome'
+                    : 'Moderator: pick the outcome to award winners',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: const Color(0xFF607182),
                 ),
@@ -153,18 +176,33 @@ class MarketCard extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => _resolve(context, winningYes: true),
-                      child: const Text('Resolve Yes'),
+                      child: Text(
+                        market.isResolved ? 'Change to Yes' : 'Resolve Yes',
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => _resolve(context, winningYes: false),
-                      child: const Text('Resolve No'),
+                      child: Text(
+                        market.isResolved ? 'Change to No' : 'Resolve No',
+                      ),
                     ),
                   ),
                 ],
               ),
+              if (market.isResolved) ...<Widget>[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _undoResolve(context),
+                    icon: const Icon(Icons.undo, size: 18),
+                    label: const Text('Undo resolve'),
+                  ),
+                ),
+              ],
             ],
             if (canDelete) ...<Widget>[
               const SizedBox(height: 8),
@@ -174,7 +212,7 @@ class MarketCard extends StatelessWidget {
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFFB24338),
                 ),
-                label: const Text('Delete question (refund all bets)'),
+                label: const Text('Delete question'),
               ),
             ],
           ],
@@ -197,7 +235,7 @@ class MarketCard extends StatelessWidget {
     } else if (ok) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Bet placed')));
+      ).showSnackBar(const SnackBar(content: Text('Pick placed')));
     }
   }
 
@@ -227,6 +265,24 @@ class MarketCard extends StatelessWidget {
     }
   }
 
+  Future<void> _undoResolve(BuildContext context) async {
+    final AppState appState = context.read<AppState>();
+    final bool ok = await appState.undoResolveMarket(marketId: market.id);
+    if (!context.mounted) {
+      return;
+    }
+    final String? message = appState.gameError;
+    if (!ok && message != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } else if (ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Resolve undone')));
+    }
+  }
+
   Future<void> _confirmDelete(BuildContext context) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -234,7 +290,7 @@ class MarketCard extends StatelessWidget {
         return AlertDialog(
           title: const Text('Delete question?'),
           content: const Text(
-            'All bets on this question will be refunded to players. This cannot be undone.',
+            'This question will be removed. This cannot be undone.',
           ),
           actions: <Widget>[
             TextButton(
@@ -246,7 +302,7 @@ class MarketCard extends StatelessWidget {
                 backgroundColor: const Color(0xFFB24338),
               ),
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Delete & refund'),
+              child: const Text('Delete'),
             ),
           ],
         );
@@ -261,9 +317,9 @@ class MarketCard extends StatelessWidget {
       return;
     }
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Question deleted — bets refunded')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Question deleted')));
     } else if (appState.gameError != null) {
       ScaffoldMessenger.of(
         context,
@@ -274,13 +330,30 @@ class MarketCard extends StatelessWidget {
   Widget _oddsGraph(BuildContext context, PredictionMarket market) {
     return _OddsTrendChart(market: market);
   }
+
+  String _formatCreatedAt(DateTime value) {
+    final DateTime local = value.toLocal();
+    final int hour = local.hour == 0
+        ? 12
+        : local.hour > 12
+        ? local.hour - 12
+        : local.hour;
+    final String minute = local.minute.toString().padLeft(2, '0');
+    final String period = local.hour >= 12 ? 'PM' : 'AM';
+    return '${local.month}/${local.day}/${local.year} $hour:$minute $period';
+  }
 }
 
 class _TrendPoint {
-  const _TrendPoint({required this.timestamp, required this.yesPercent});
+  const _TrendPoint({
+    required this.timestamp,
+    required this.yesPercent,
+    required this.pickUnit,
+  });
 
   final DateTime timestamp;
   final double yesPercent;
+  final double pickUnit;
   double get noPercent => 100 - yesPercent;
 }
 
@@ -313,7 +386,13 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.market.id != widget.market.id ||
         (oldWidget.market.yesPercent - widget.market.yesPercent).abs() >
-            0.001) {
+            0.001 ||
+        oldWidget.market.pickHistory.length !=
+            widget.market.pickHistory.length ||
+        (oldWidget.market.pickHistory.isNotEmpty &&
+            widget.market.pickHistory.isNotEmpty &&
+            oldWidget.market.pickHistory.last.createdAt !=
+                widget.market.pickHistory.last.createdAt)) {
       _points = _generateTrendSeries(widget.market);
       _hoveredIndex = null;
     }
@@ -321,22 +400,29 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
 
   @override
   Widget build(BuildContext context) {
-    final _TrendPoint latest = _points.last;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double width = constraints.maxWidth;
+        final bool hasPoints = _points.isNotEmpty;
         final double plotWidth = math.max(
           1,
           width - _leftPadding - _rightPadding,
         );
-        final int hoverIndex = (_hoveredIndex ?? (_points.length - 1)).clamp(
-          0,
-          _points.length - 1,
-        );
-        final _TrendPoint hovered = _points[hoverIndex];
-        final double hoverX =
-            _leftPadding + _xForIndex(hoverIndex, plotWidth, _points.length);
-        final double hoverY = _yForPercent(hovered.yesPercent, _chartHeight);
+        final int? hoverIndex = hasPoints
+            ? (_hoveredIndex ?? (_points.length - 1)).clamp(
+                0,
+                _points.length - 1,
+              )
+            : null;
+        final _TrendPoint? hovered = hoverIndex == null
+            ? null
+            : _points[hoverIndex];
+        final double hoverX = hovered == null
+            ? 0
+            : _leftPadding + _xForPoint(hovered, plotWidth);
+        final double hoverY = hovered == null
+            ? 0
+            : _yForPercent(hovered.yesPercent, _chartHeight);
 
         return MouseRegion(
           onHover: (event) =>
@@ -353,7 +439,11 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
               height: _chartHeight + 32,
               child: Stack(
                 children: <Widget>[
-                  Positioned.fill(
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: _chartHeight,
                     child: CustomPaint(
                       painter: _OddsTrendPainter(
                         points: _points,
@@ -362,42 +452,50 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
                         leftPadding: _leftPadding,
                         rightPadding: _rightPadding,
                         hoveredIndex: _hoveredIndex,
+                        chartUnits: _chartUnits(),
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: (hoverY - 40).clamp(2, _chartHeight - 36),
-                    left: (hoverX - 48).clamp(4, width - 120),
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 120),
-                      opacity: _hoveredIndex == null ? 0 : 1,
-                      child: _hoverTooltip(context, hovered),
+                  if (hovered != null)
+                    Positioned(
+                      top: (hoverY - 40).clamp(2, _chartHeight - 36),
+                      left: (hoverX - 48).clamp(4, width - 120),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 120),
+                        opacity: _hoveredIndex == null ? 0 : 1,
+                        child: _hoverTooltip(context, hovered),
+                      ),
                     ),
-                  ),
                   Positioned(
                     left: 0,
-                    top: -4,
-                    bottom: 24,
+                    top: 0,
+                    height: _chartHeight,
                     child: _yAxisLabels(context),
                   ),
-                  Positioned(
-                    right: 2,
-                    top: (_yForPercent(latest.yesPercent, _chartHeight) - 8)
-                        .clamp(0, _chartHeight - 16),
-                    child: _lineValueLabel(
-                      '${latest.yesPercent.toStringAsFixed(0)}%',
-                      _yesColor,
+                  if (hasPoints) ...<Widget>[
+                    Positioned(
+                      right: 2,
+                      top:
+                          (_yForPercent(_points.last.yesPercent, _chartHeight) -
+                                  8)
+                              .clamp(0, _chartHeight - 16),
+                      child: _lineValueLabel(
+                        '${_points.last.yesPercent.toStringAsFixed(0)}%',
+                        _yesColor,
+                      ),
                     ),
-                  ),
-                  Positioned(
-                    right: 2,
-                    top: (_yForPercent(latest.noPercent, _chartHeight) - 8)
-                        .clamp(0, _chartHeight - 16),
-                    child: _lineValueLabel(
-                      '${latest.noPercent.toStringAsFixed(0)}%',
-                      _noColor,
+                    Positioned(
+                      right: 2,
+                      top:
+                          (_yForPercent(_points.last.noPercent, _chartHeight) -
+                                  8)
+                              .clamp(0, _chartHeight - 16),
+                      child: _lineValueLabel(
+                        '${_points.last.noPercent.toStringAsFixed(0)}%',
+                        _noColor,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -464,10 +562,20 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
   }
 
   void _updateHoverIndex(double localX, double plotWidth) {
+    if (_points.isEmpty) {
+      return;
+    }
     final double clampedX = (localX - _leftPadding).clamp(0, plotWidth);
-    final int index = ((clampedX / plotWidth) * (_points.length - 1))
-        .round()
-        .clamp(0, _points.length - 1);
+    int index = 0;
+    double closestDistance = double.infinity;
+    for (int i = 0; i < _points.length; i++) {
+      final double distance = (_xForPoint(_points[i], plotWidth) - clampedX)
+          .abs();
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        index = i;
+      }
+    }
     if (_hoveredIndex == index) {
       return;
     }
@@ -475,59 +583,72 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
   }
 
   List<_TrendPoint> _generateTrendSeries(PredictionMarket market) {
-    final int seed = market.id.codeUnits.fold<int>(
-      0,
-      (int sum, int unit) => sum + unit,
-    );
-    final math.Random random = math.Random(seed);
-    const int pointCount = 25;
-    final DateTime end = DateTime.now();
-    final DateTime start = end.subtract(const Duration(hours: 24));
-    final Duration step = Duration(
-      minutes: (24 * 60 / (pointCount - 1)).round(),
-    );
-    final List<double> raw = <double>[];
+    final List<PickHistoryEntry> history =
+        List<PickHistoryEntry>.from(market.pickHistory)
+          ..sort((PickHistoryEntry a, PickHistoryEntry b) {
+            final int timeCompare = a.createdAt.compareTo(b.createdAt);
+            if (timeCompare != 0) {
+              return timeCompare;
+            }
+            return a.side.compareTo(b.side);
+          });
 
-    double yes = (market.yesPercent + (random.nextDouble() * 16 - 8)).clamp(
-      10,
-      90,
-    );
-    raw.add(yes);
-    for (int i = 1; i < pointCount; i++) {
-      yes = (yes + (random.nextDouble() * 10 - 5)).clamp(5, 95);
-      raw.add(yes);
+    final List<_TrendPoint> points = <_TrendPoint>[];
+    double yesTotal = 0;
+    double noTotal = 0;
+    final double historyUnits = math.max(10, history.length).toDouble();
+    for (int i = 0; i < history.length; i++) {
+      final PickHistoryEntry pick = history[i];
+      if (pick.side.toLowerCase() == 'yes') {
+        yesTotal += pick.amount;
+      } else {
+        noTotal += pick.amount;
+      }
+      final double total = yesTotal + noTotal;
+      points.add(
+        _TrendPoint(
+          timestamp: pick.createdAt,
+          yesPercent: total == 0 ? 50 : (yesTotal / total) * 100,
+          pickUnit: ((i + 1) / historyUnits) * 5,
+        ),
+      );
     }
 
-    final double delta = market.yesPercent - raw.last;
-    final List<double> shifted = raw
-        .map((double value) => (value + delta).clamp(3, 97).toDouble())
-        .toList(growable: false);
-
-    final List<double> smoothed = List<double>.generate(shifted.length, (
-      int i,
-    ) {
-      if (i == 0 || i == shifted.length - 1) {
-        return shifted[i];
-      }
-      return (shifted[i - 1] * 0.25) +
-          (shifted[i] * 0.5) +
-          (shifted[i + 1] * 0.25);
-    });
-    smoothed[smoothed.length - 1] = market.yesPercent.clamp(0, 100).toDouble();
-
-    return List<_TrendPoint>.generate(pointCount, (int i) {
-      return _TrendPoint(
-        timestamp: start.add(step * i),
-        yesPercent: smoothed[i],
+    if (points.isNotEmpty) {
+      points.insert(
+        0,
+        _TrendPoint(
+          timestamp: market.createdAt,
+          yesPercent: points.first.yesPercent,
+          pickUnit: 0,
+        ),
       );
-    });
+      final double latest = market.yesPercent.clamp(0, 100).toDouble();
+      points[points.length - 1] = _TrendPoint(
+        timestamp: points.last.timestamp,
+        yesPercent: latest,
+        pickUnit: points.last.pickUnit,
+      );
+      final DateTime now = DateTime.now();
+      if (now.isAfter(points.last.timestamp)) {
+        points.add(
+          _TrendPoint(timestamp: now, yesPercent: latest, pickUnit: 10),
+        );
+      }
+    }
+    return points;
   }
 
-  double _xForIndex(int index, double width, int pointCount) {
-    if (pointCount <= 1) {
+  double _xForPoint(_TrendPoint point, double width) {
+    final double units = _chartUnits();
+    if (units <= 0) {
       return 0;
     }
-    return (index / (pointCount - 1)) * width;
+    return (point.pickUnit.clamp(0, units) / units) * width;
+  }
+
+  double _chartUnits() {
+    return 10;
   }
 
   double _yForPercent(double percent, double height) {
@@ -550,6 +671,7 @@ class _OddsTrendPainter extends CustomPainter {
     required this.leftPadding,
     required this.rightPadding,
     required this.hoveredIndex,
+    required this.chartUnits,
   });
 
   final List<_TrendPoint> points;
@@ -558,6 +680,7 @@ class _OddsTrendPainter extends CustomPainter {
   final double leftPadding;
   final double rightPadding;
   final int? hoveredIndex;
+  final double chartUnits;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -566,27 +689,28 @@ class _OddsTrendPainter extends CustomPainter {
       size.width - leftPadding - rightPadding,
     );
     final double plotHeight = size.height;
+    _drawGrid(canvas, size);
+
+    if (points.isEmpty) {
+      return;
+    }
+
     final List<Offset> yesPoints = _toOffsets(
-      values: points
-          .map((_TrendPoint point) => point.yesPercent)
-          .toList(growable: false),
+      percentForPoint: (_TrendPoint point) => point.yesPercent,
       width: plotWidth,
       height: plotHeight,
     );
     final List<Offset> noPoints = _toOffsets(
-      values: points
-          .map((_TrendPoint point) => point.noPercent)
-          .toList(growable: false),
+      percentForPoint: (_TrendPoint point) => point.noPercent,
       width: plotWidth,
       height: plotHeight,
     );
 
-    _drawGrid(canvas, size);
-
-    final Path yesPath = _smoothPath(yesPoints);
-    final Path noPath = _smoothPath(noPoints);
-    _drawFill(canvas, yesPath, yesPoints, plotHeight, yesColor);
-    _drawFill(canvas, noPath, noPoints, plotHeight, noColor);
+    final double rightX = leftPadding + plotWidth;
+    final Path yesPath = _stepPath(yesPoints, rightX);
+    final Path noPath = _stepPath(noPoints, rightX);
+    _drawFill(canvas, yesPath, yesPoints, plotHeight, rightX, yesColor);
+    _drawFill(canvas, noPath, noPoints, plotHeight, rightX, noColor);
 
     final Paint yesPaint = Paint()
       ..color = yesColor.withValues(alpha: 0.88)
@@ -604,8 +728,7 @@ class _OddsTrendPainter extends CustomPainter {
     if (hoveredIndex != null &&
         hoveredIndex! >= 0 &&
         hoveredIndex! < points.length) {
-      final double x =
-          leftPadding + (hoveredIndex! / (points.length - 1)) * plotWidth;
+      final double x = yesPoints[hoveredIndex!].dx;
       final Paint crosshair = Paint()
         ..color = const Color(0xFF64748B).withValues(alpha: 0.35)
         ..strokeWidth = 1;
@@ -628,37 +751,35 @@ class _OddsTrendPainter extends CustomPainter {
   }
 
   List<Offset> _toOffsets({
-    required List<double> values,
+    required double Function(_TrendPoint point) percentForPoint,
     required double width,
     required double height,
   }) {
-    if (values.length <= 1) {
-      return <Offset>[Offset.zero];
-    }
-    return List<Offset>.generate(values.length, (int i) {
-      final double x = leftPadding + (i / (values.length - 1)) * width;
-      final double y = (1 - values[i].clamp(0, 100) / 100) * height;
+    return List<Offset>.generate(points.length, (int i) {
+      final _TrendPoint point = points[i];
+      final double x =
+          leftPadding +
+          (chartUnits <= 0
+              ? 0
+              : (point.pickUnit.clamp(0, chartUnits) / chartUnits) * width);
+      final double y =
+          (1 - percentForPoint(point).clamp(0, 100) / 100) * height;
       return Offset(x, y);
     });
   }
 
-  Path _smoothPath(List<Offset> points) {
+  Path _stepPath(List<Offset> points, double rightX) {
     final Path path = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 1; i < points.length; i++) {
       final Offset previous = points[i - 1];
       final Offset current = points[i];
-      final Offset midpoint = Offset(
-        (previous.dx + current.dx) / 2,
-        (previous.dy + current.dy) / 2,
-      );
-      path.quadraticBezierTo(
-        previous.dx,
-        previous.dy,
-        midpoint.dx,
-        midpoint.dy,
-      );
+      path
+        ..lineTo(previous.dx, current.dy)
+        ..lineTo(current.dx, current.dy);
     }
-    path.lineTo(points.last.dx, points.last.dy);
+    if (points.last.dx < rightX) {
+      path.lineTo(rightX, points.last.dy);
+    }
     return path;
   }
 
@@ -667,13 +788,14 @@ class _OddsTrendPainter extends CustomPainter {
     Path linePath,
     List<Offset> points,
     double height,
+    double rightX,
     Color color,
   ) {
     final Path fillPath = Path.from(linePath)
-      ..lineTo(points.last.dx, height)
+      ..lineTo(rightX, height)
       ..lineTo(points.first.dx, height)
       ..close();
-    final Rect bounds = Rect.fromLTWH(0, 0, points.last.dx, height);
+    final Rect bounds = Rect.fromLTWH(0, 0, rightX, height);
     final Paint fill = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
@@ -692,6 +814,7 @@ class _OddsTrendPainter extends CustomPainter {
     return oldDelegate.points != points ||
         oldDelegate.hoveredIndex != hoveredIndex ||
         oldDelegate.leftPadding != leftPadding ||
-        oldDelegate.rightPadding != rightPadding;
+        oldDelegate.rightPadding != rightPadding ||
+        oldDelegate.chartUnits != chartUnits;
   }
 }

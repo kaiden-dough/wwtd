@@ -139,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen>
                   Text(
                     isRegister
                         ? 'Pick a username — that\'s how you appear on leaderboards.'
-                        : 'Sign in to bet on predictions with friends.',
+                        : 'Sign in to make picks with friends.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: const Color(0xFF607182),
@@ -283,6 +283,17 @@ class _LoginScreenState extends State<LoginScreen>
                               size: 18,
                             ),
                             label: const Text('Temporary admin login'),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: appState.authLoading
+                                ? null
+                                : () {
+                                    appState.clearAuthError();
+                                    appState.tempUserLogin();
+                                  },
+                            icon: const Icon(Icons.person_outline, size: 18),
+                            label: const Text('Temporary user login'),
                           ),
                         ],
                       ),

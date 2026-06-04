@@ -36,7 +36,7 @@ class RoomLeaderboardSection extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 entries.isEmpty
-                    ? 'No resolved bets yet.'
+                    ? 'No resolved picks yet.'
                     : '$personName\'s room · you are #${appState.currentUserRank()}',
                 style: Theme.of(
                   context,
@@ -46,7 +46,7 @@ class RoomLeaderboardSection extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Ranked by wins, then win rate. More bets = more chances.',
+                    'Ranked by wins, then win rate. More picks = more chances.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: const Color(0xFF94A3B8),
                       fontSize: 11,
@@ -141,8 +141,8 @@ class _LeaderboardRow extends StatelessWidget {
                 ),
                 Text(
                   entry.resolvedBets == 0
-                      ? 'No resolved bets'
-                      : '${entry.winRate.toStringAsFixed(0)}% · ${entry.resolvedBets} bet${entry.resolvedBets == 1 ? '' : 's'}',
+                      ? 'No resolved picks'
+                      : '${entry.winRate.toStringAsFixed(0)}% · ${entry.resolvedBets} pick${entry.resolvedBets == 1 ? '' : 's'}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF607182),
                   ),
