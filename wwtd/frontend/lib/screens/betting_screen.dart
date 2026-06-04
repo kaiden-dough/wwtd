@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
+import 'package:wwtd/utils/clipboard_copy.dart';
 import 'package:wwtd/widgets/join_room_sheet.dart';
 import 'package:wwtd/widgets/market_card.dart';
 import 'package:wwtd/widgets/room_leaderboard_section.dart';
@@ -31,7 +31,12 @@ class BettingScreen extends StatelessWidget {
               ),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.fromLTRB(14, room != null ? 12 : 12, 14, 12),
+                padding: EdgeInsets.fromLTRB(
+                  14,
+                  room != null ? 12 : 12,
+                  14,
+                  12,
+                ),
                 children: _buildQuestionChildren(context, room, displayMarkets),
               ),
             ),
@@ -189,12 +194,55 @@ class _RoomSidebar extends StatelessWidget {
             if (room != null) ...<Widget>[
               const SizedBox(height: 10),
               if (room!.isModerator) ...<Widget>[
-                Text(
-                  'Join code: ${room!.joinCode}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF1454A7),
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        'Join code: ${room!.joinCode}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF1454A7),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          final bool copied = await copyTextToClipboard(
+                            room!.joinCode,
+                          );
+                          if (!context.mounted) {
+                            return;
+                          }
+                          if (copied) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Join code copied')),
+                            );
+                          } else {
+                            await _showManualCopyCodeDialog(
+                              context,
+                              room!.joinCode,
+                            );
+                          }
+                        } catch (_) {
+                          if (!context.mounted) {
+                            return;
+                          }
+                          await _showManualCopyCodeDialog(
+                            context,
+                            room!.joinCode,
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.copy_outlined, size: 16),
+                      label: const Text('Copy'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 34),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ],
@@ -213,24 +261,19 @@ class _MarketBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Center(
-          child: FilledButton.icon(
-            onPressed: onAddQuestion,
-            icon: const Icon(Icons.add_comment_outlined, size: 18),
-            label: const Text(
-              'Add question',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
+    return SizedBox(
+      height: 52,
+      child: FilledButton.icon(
+        onPressed: onAddQuestion,
+        style: FilledButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
+        ),
+        icon: const Icon(Icons.add_comment_outlined, size: 20),
+        label: const Text(
+          'Add question',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
         ),
       ),
     );
@@ -270,7 +313,7 @@ Future<void> _showCreateRoomSheet(
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'You\'ll get a join code. Members can add their own questions; you moderate and can delete questions (bets are refunded).',
+                      'You\'ll get a join code. Members can add their own questions; you moderate and can delete questions.',
                       style: Theme.of(sheetContext).textTheme.bodySmall
                           ?.copyWith(color: const Color(0xFF607182)),
                     ),
@@ -354,10 +397,16 @@ Future<void> _showAddQuestionSheet(
   BuildContext context,
   AppState appState,
 ) async {
-  final TextEditingController controller = TextEditingController();
   final GameRoom? room = appState.selectedRoom;
   final List<String> people = room?.personNames ?? <String>[];
   final Set<String> selectedTargets = <String>{...people};
+  List<String> selectedTargetNames() => people
+      .where((String person) => selectedTargets.contains(person))
+      .toList(growable: false);
+  String questionLead() =>
+      'Will ${_formatQuestionTargets(selectedTargetNames())}';
+  final TextEditingController controller = TextEditingController();
+
   await showDialog<void>(
     context: context,
     builder: (BuildContext sheetContext) {
@@ -384,15 +433,38 @@ Future<void> _showAddQuestionSheet(
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: 'Question',
-                        hintText: 'Will they ...?',
-                        border: OutlineInputBorder(),
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        Flexible(
+                          child: Text(
+                            questionLead(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(sheetContext).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            autofocus: true,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              hintText: 'order pizza',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '?',
+                          style: Theme.of(sheetContext).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ],
                     ),
                     if (people.length > 1) ...<Widget>[
                       const SizedBox(height: 12),
@@ -429,8 +501,23 @@ Future<void> _showAddQuestionSheet(
                           );
                           return;
                         }
+                        final String questionMiddle = controller.text.trim();
+                        if (questionMiddle.isEmpty) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            const SnackBar(
+                              content: Text('Add the question text'),
+                            ),
+                          );
+                          return;
+                        }
+                        final String questionBody = questionMiddle.replaceAll(
+                          RegExp(r'\?+$'),
+                          '',
+                        );
+                        final String question =
+                            '${questionLead()} $questionBody?';
                         final PredictionMarket? q = await appState.addQuestion(
-                          controller.text,
+                          question,
                           targetNames: selectedTargets.toList(growable: false),
                         );
                         if (!sheetContext.mounted) {
@@ -456,6 +543,19 @@ Future<void> _showAddQuestionSheet(
     },
   );
   controller.dispose();
+}
+
+String _formatQuestionTargets(List<String> names) {
+  if (names.isEmpty) {
+    return 'they';
+  }
+  if (names.length == 1) {
+    return names.single;
+  }
+  if (names.length == 2) {
+    return '${names[0]} and ${names[1]}';
+  }
+  return '${names.take(names.length - 1).join(', ')}, and ${names.last}';
 }
 
 Future<void> _showJoinCodeDialog(
@@ -498,14 +598,64 @@ Future<void> _showJoinCodeDialog(
         ),
         actions: <Widget>[
           TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: code));
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Code copied')));
+            onPressed: () async {
+              try {
+                final bool copied = await copyTextToClipboard(code);
+                if (!context.mounted) {
+                  return;
+                }
+                if (copied) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Code copied')));
+                } else {
+                  await _showManualCopyCodeDialog(context, code);
+                }
+              } catch (_) {
+                if (!context.mounted) {
+                  return;
+                }
+                await _showManualCopyCodeDialog(context, code);
+              }
             },
             child: const Text('Copy'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _showManualCopyCodeDialog(
+  BuildContext context,
+  String code,
+) async {
+  await showDialog<void>(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        title: const Text('Copy join code'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('Clipboard access is blocked in this browser.'),
+            const SizedBox(height: 12),
+            SelectableText(
+              code,
+              style: Theme.of(dialogContext).textTheme.headlineSmall?.copyWith(
+                letterSpacing: 3,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1454A7),
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Done'),
@@ -615,24 +765,6 @@ class _RoomPicker extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
         ),
-        if (room.isModerator) ...<Widget>[
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F1FE),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text(
-              'You moderate',
-              style: TextStyle(
-                color: Color(0xFF1454A7),
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
         const SizedBox(height: 2),
         Text(
           room.isModerator

@@ -36,6 +36,12 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
   bool _joining = false;
 
   @override
+  void initState() {
+    super.initState();
+    _runSearch('');
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
@@ -56,13 +62,6 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
       return;
     }
     final String term = query.trim();
-    if (term.isEmpty) {
-      setState(() {
-        _results = <RoomDiscover>[];
-        _searching = false;
-      });
-      return;
-    }
     setState(() => _searching = true);
     final AppState appState = context.read<AppState>();
     final List<RoomDiscover> found = await appState.searchRooms(term);
@@ -127,7 +126,7 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Search for a room, then enter the join code from the moderator.',
+              'Search for a room, or pick one of the popular rooms below. You still need the join code from the moderator.',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
@@ -199,15 +198,17 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_searchController.text.trim().isEmpty) {
-      return Center(
-        child: Text(
-          'Search by who the room is about or the moderator\'s username.',
-          textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
-        ),
-      );
+      if (_results.isEmpty) {
+        return Center(
+          child: Text(
+            'No rooms to show yet.',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
+          ),
+        );
+      }
     }
     if (_results.isEmpty) {
       return Center(
@@ -256,7 +257,7 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
                           ),
                         ),
                         Text(
-                          'Moderator: ${room.moderatorName}',
+                          'Moderator: ${room.moderatorName} · ${room.memberCount} ${room.memberCount == 1 ? 'member' : 'members'}',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF607182)),
                         ),

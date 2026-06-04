@@ -51,6 +51,12 @@ class BetOut(BaseModel):
     created_at: datetime
 
 
+class PickHistoryOut(BaseModel):
+    side: str
+    amount: float
+    created_at: datetime
+
+
 class AuthTokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -91,6 +97,7 @@ class RoomDiscoverOut(BaseModel):
     person_names: list[str] = Field(default_factory=list)
     room_type: str = "individual"
     moderator_name: str
+    member_count: int = 0
     is_member: bool = False
 
 
@@ -129,6 +136,7 @@ class QuestionOut(BaseModel):
     no_wagered_points: float
     user_yes_bet: float = 0
     user_no_bet: float = 0
+    pick_history: list[PickHistoryOut] = Field(default_factory=list)
 
 
 class QuestionResolve(BaseModel):

@@ -16,6 +16,7 @@ class PredictionMarket {
     this.bettingOpen = true,
     this.userYesBet = 0,
     this.userNoBet = 0,
+    this.pickHistory = const <PickHistoryEntry>[],
   });
 
   final String id;
@@ -34,6 +35,7 @@ class PredictionMarket {
   final bool bettingOpen;
   final double userYesBet;
   final double userNoBet;
+  final List<PickHistoryEntry> pickHistory;
 
   bool get isOpen => status == 'open';
   bool get isResolved => status == 'resolved';
@@ -68,6 +70,12 @@ class PredictionMarket {
       noWageredPoints: (json['no_wagered_points'] as num).toDouble(),
       userYesBet: (json['user_yes_bet'] as num?)?.toDouble() ?? 0,
       userNoBet: (json['user_no_bet'] as num?)?.toDouble() ?? 0,
+      pickHistory: ((json['pick_history'] as List<dynamic>?) ?? <dynamic>[])
+          .map(
+            (dynamic item) =>
+                PickHistoryEntry.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -80,6 +88,7 @@ class PredictionMarket {
     String? winningSide,
     bool? bettingOpen,
     bool? isModerator,
+    List<PickHistoryEntry>? pickHistory,
   }) {
     return PredictionMarket(
       id: id,
@@ -98,6 +107,27 @@ class PredictionMarket {
       noWageredPoints: noWageredPoints ?? this.noWageredPoints,
       userYesBet: userYesBet ?? this.userYesBet,
       userNoBet: userNoBet ?? this.userNoBet,
+      pickHistory: pickHistory ?? this.pickHistory,
+    );
+  }
+}
+
+class PickHistoryEntry {
+  const PickHistoryEntry({
+    required this.side,
+    required this.amount,
+    required this.createdAt,
+  });
+
+  final String side;
+  final double amount;
+  final DateTime createdAt;
+
+  factory PickHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return PickHistoryEntry(
+      side: json['side'] as String,
+      amount: (json['amount'] as num).toDouble(),
+      createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 }

@@ -5,6 +5,7 @@ class RoomDiscover {
     required this.personNames,
     required this.roomType,
     required this.moderatorName,
+    required this.memberCount,
     this.isMember = false,
   });
 
@@ -13,6 +14,7 @@ class RoomDiscover {
   final List<String> personNames;
   final String roomType;
   final String moderatorName;
+  final int memberCount;
   final bool isMember;
 
   factory RoomDiscover.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class RoomDiscover {
               .toList(growable: false),
       roomType: json['room_type'] as String? ?? 'individual',
       moderatorName: json['moderator_name'] as String,
+      memberCount: (json['member_count'] as num?)?.toInt() ?? 0,
       isMember: json['is_member'] as bool? ?? false,
     );
   }

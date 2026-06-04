@@ -122,14 +122,23 @@ def login(body: LoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthToken
 @router.post("/admin-login", response_model=AuthTokenOut)
 def admin_login(db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
     """Temporary local-dev shortcut for working on the app without creating accounts."""
-    username = "admin"
+    return _temp_login(db, username="admin", display_name="Admin")
+
+
+@router.post("/temp-user-login", response_model=AuthTokenOut)
+def temp_user_login(db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+    """Temporary local-dev shortcut for a non-moderator test account."""
+    return _temp_login(db, username="testuser", display_name="Test User")
+
+
+def _temp_login(db: Session, *, username: str, display_name: str) -> AuthTokenOut:
     profile = db.scalar(select(Profile).where(Profile.username == username))
     if profile is None:
         profile = Profile(
             id=str(uuid.uuid4()),
             username=username,
             password_hash=None,
-            display_name="Admin",
+            display_name=display_name,
             balance_points=0.0,
         )
         db.add(profile)
