@@ -103,6 +103,7 @@ class Question(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
     winning_side: Mapped[str | None] = mapped_column(String(8), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    betting_closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     room: Mapped[Room] = relationship(back_populates="questions")
     author: Mapped[Profile] = relationship(foreign_keys=[created_by])

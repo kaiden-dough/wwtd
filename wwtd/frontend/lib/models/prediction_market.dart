@@ -10,6 +10,7 @@ class PredictionMarket {
     required this.noWageredPoints,
     required this.createdBy,
     required this.createdAt,
+    required this.bettingClosesAt,
     this.isModerator = false,
     this.status = 'open',
     this.winningSide,
@@ -29,6 +30,7 @@ class PredictionMarket {
   final double noWageredPoints;
   final String createdBy;
   final DateTime createdAt;
+  final DateTime bettingClosesAt;
   final bool isModerator;
   final String status;
   final String? winningSide;
@@ -49,6 +51,7 @@ class PredictionMarket {
       totalPot == 0 ? 50 : (noWageredPoints / totalPot) * 100;
 
   factory PredictionMarket.fromJson(Map<String, dynamic> json) {
+    final DateTime createdAt = DateTime.parse(json['created_at'] as String);
     return PredictionMarket(
       id: json['id'] as String,
       roomId: json['room_id'] as String,
@@ -64,7 +67,10 @@ class PredictionMarket {
       isModerator: json['is_moderator'] as bool? ?? false,
       status: json['status'] as String? ?? 'open',
       winningSide: json['winning_side'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: createdAt,
+      bettingClosesAt:
+          _parseNullableDateTime(json['betting_closes_at']) ??
+          _localEndOfDay(createdAt),
       bettingOpen: json['betting_open'] as bool? ?? true,
       yesWageredPoints: (json['yes_wagered_points'] as num).toDouble(),
       noWageredPoints: (json['no_wagered_points'] as num).toDouble(),
@@ -89,6 +95,7 @@ class PredictionMarket {
     bool? bettingOpen,
     bool? isModerator,
     List<PickHistoryEntry>? pickHistory,
+    DateTime? bettingClosesAt,
   }) {
     return PredictionMarket(
       id: id,
@@ -99,6 +106,7 @@ class PredictionMarket {
       question: question,
       createdBy: createdBy,
       createdAt: createdAt,
+      bettingClosesAt: bettingClosesAt ?? this.bettingClosesAt,
       isModerator: isModerator ?? this.isModerator,
       status: status ?? this.status,
       winningSide: winningSide ?? this.winningSide,
@@ -110,6 +118,18 @@ class PredictionMarket {
       pickHistory: pickHistory ?? this.pickHistory,
     );
   }
+}
+
+DateTime? _parseNullableDateTime(dynamic value) {
+  if (value is! String || value.isEmpty) {
+    return null;
+  }
+  return DateTime.tryParse(value);
+}
+
+DateTime _localEndOfDay(DateTime value) {
+  final DateTime local = value.toLocal();
+  return DateTime(local.year, local.month, local.day + 1);
 }
 
 class PickHistoryEntry {

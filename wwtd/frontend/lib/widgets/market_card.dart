@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
+import 'package:wwtd/utils/app_snack_bar.dart';
 
 class MarketCard extends StatelessWidget {
   const MarketCard({required this.market, super.key});
@@ -15,6 +16,7 @@ class MarketCard extends StatelessWidget {
     final bool canBet = appState.isLoggedIn && market.isBettingOpen;
     final bool canResolve = appState.canResolveMarket(market);
     final bool canDelete = appState.canDeleteQuestion(market);
+    final bool canChangeExpiry = appState.canChangeMarketExpiry(market);
 
     return Card(
       elevation: 1,
@@ -35,6 +37,13 @@ class MarketCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Created ${_formatCreatedAt(market.createdAt)}',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Expires EOD Eastern: ${_formatEasternExpiryDate(market.bettingClosesAt)}',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: const Color(0xFF607182)),
@@ -99,7 +108,7 @@ class MarketCard extends StatelessWidget {
             ] else if (!market.bettingOpen) ...<Widget>[
               const SizedBox(height: 8),
               Text(
-                'Picking closed — 24 hours have passed',
+                'Picking closed — expiry reached',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: const Color(0xFF607182),
                   fontWeight: FontWeight.w700,
@@ -204,6 +213,17 @@ class MarketCard extends StatelessWidget {
                 ),
               ],
             ],
+            if (canChangeExpiry) ...<Widget>[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _changeExpiry(context),
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: const Text('Change expiry'),
+                ),
+              ),
+            ],
             if (canDelete) ...<Widget>[
               const SizedBox(height: 8),
               TextButton.icon(
@@ -229,13 +249,9 @@ class MarketCard extends StatelessWidget {
     }
     final String? message = appState.gameError;
     if (!ok && message != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showAppSnackBar(context, SnackBar(content: Text(message)));
     } else if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Pick placed')));
+      showAppSnackBar(context, const SnackBar(content: Text('Pick placed')));
     }
   }
 
@@ -253,11 +269,10 @@ class MarketCard extends StatelessWidget {
     }
     final String? message = appState.gameError;
     if (!ok && message != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showAppSnackBar(context, SnackBar(content: Text(message)));
     } else if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      showAppSnackBar(
+        context,
         SnackBar(
           content: Text('Market resolved — ${winningYes ? 'Yes' : 'No'} wins'),
         ),
@@ -273,13 +288,37 @@ class MarketCard extends StatelessWidget {
     }
     final String? message = appState.gameError;
     if (!ok && message != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      showAppSnackBar(context, SnackBar(content: Text(message)));
     } else if (ok) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Resolve undone')));
+      showAppSnackBar(context, const SnackBar(content: Text('Resolve undone')));
+    }
+  }
+
+  Future<void> _changeExpiry(BuildContext context) async {
+    final DateTime currentExpiry = _easternExpiryDate(market.bettingClosesAt);
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: currentExpiry.isBefore(today) ? today : currentExpiry,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+    );
+    if (!context.mounted || picked == null) {
+      return;
+    }
+    final AppState appState = context.read<AppState>();
+    final bool ok = await appState.updateMarketExpiry(
+      marketId: market.id,
+      expiresOn: _dateOnly(picked),
+    );
+    if (!context.mounted) {
+      return;
+    }
+    if (ok) {
+      showAppSnackBar(context, const SnackBar(content: Text('Expiry updated')));
+    } else if (appState.gameError != null) {
+      showAppSnackBar(context, SnackBar(content: Text(appState.gameError!)));
     }
   }
 
@@ -317,13 +356,12 @@ class MarketCard extends StatelessWidget {
       return;
     }
     if (ok) {
-      ScaffoldMessenger.of(
+      showAppSnackBar(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Question deleted')));
+        const SnackBar(content: Text('Question deleted')),
+      );
     } else if (appState.gameError != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(appState.gameError!)));
+      showAppSnackBar(context, SnackBar(content: Text(appState.gameError!)));
     }
   }
 
@@ -332,15 +370,35 @@ class MarketCard extends StatelessWidget {
   }
 
   String _formatCreatedAt(DateTime value) {
-    final DateTime local = value.toLocal();
-    final int hour = local.hour == 0
+    final DateTime eastern = _toEasternTime(value);
+    final int hour = eastern.hour == 0
         ? 12
-        : local.hour > 12
-        ? local.hour - 12
-        : local.hour;
-    final String minute = local.minute.toString().padLeft(2, '0');
-    final String period = local.hour >= 12 ? 'PM' : 'AM';
-    return '${local.month}/${local.day}/${local.year} $hour:$minute $period';
+        : eastern.hour > 12
+        ? eastern.hour - 12
+        : eastern.hour;
+    final String minute = eastern.minute.toString().padLeft(2, '0');
+    final String period = eastern.hour >= 12 ? 'PM' : 'AM';
+    return '${eastern.month}/${eastern.day}/${eastern.year} $hour:$minute $period Eastern';
+  }
+
+  String _formatEasternExpiryDate(DateTime value) {
+    final DateTime easternDateAnchor = _easternExpiryDate(value);
+    return '${easternDateAnchor.month}/${easternDateAnchor.day}/${easternDateAnchor.year}';
+  }
+
+  DateTime _easternExpiryDate(DateTime value) {
+    final DateTime easternDateAnchor = value.toUtc().subtract(
+      const Duration(hours: 12),
+    );
+    return DateTime(
+      easternDateAnchor.year,
+      easternDateAnchor.month,
+      easternDateAnchor.day,
+    );
+  }
+
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
   }
 }
 
@@ -656,11 +714,50 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
   }
 
   String _formatTimestamp(DateTime dateTime) {
-    final int hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
-    final String minute = dateTime.minute.toString().padLeft(2, '0');
-    final String suffix = dateTime.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
+    final DateTime eastern = _toEasternTime(dateTime);
+    final int hour = eastern.hour % 12 == 0 ? 12 : eastern.hour % 12;
+    final String minute = eastern.minute.toString().padLeft(2, '0');
+    final String suffix = eastern.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $suffix Eastern';
   }
+}
+
+DateTime _toEasternTime(DateTime value) {
+  final DateTime utc = _asUtc(value);
+  return utc.add(_easternOffsetAt(utc));
+}
+
+DateTime _asUtc(DateTime value) {
+  if (value.isUtc) {
+    return value;
+  }
+  return DateTime.utc(
+    value.year,
+    value.month,
+    value.day,
+    value.hour,
+    value.minute,
+    value.second,
+    value.millisecond,
+    value.microsecond,
+  );
+}
+
+Duration _easternOffsetAt(DateTime utc) {
+  final DateTime dstStart = _secondSundayUtc(utc.year, DateTime.march, hour: 7);
+  final DateTime dstEnd = _firstSundayUtc(utc.year, DateTime.november, hour: 6);
+  final bool isDst = !utc.isBefore(dstStart) && utc.isBefore(dstEnd);
+  return Duration(hours: isDst ? -4 : -5);
+}
+
+DateTime _firstSundayUtc(int year, int month, {required int hour}) {
+  final DateTime firstDay = DateTime.utc(year, month);
+  final int daysUntilSunday = DateTime.sunday - firstDay.weekday;
+  return DateTime.utc(year, month, firstDay.day + daysUntilSunday, hour);
+}
+
+DateTime _secondSundayUtc(int year, int month, {required int hour}) {
+  return _firstSundayUtc(year, month, hour: hour).add(const Duration(days: 7));
 }
 
 class _OddsTrendPainter extends CustomPainter {

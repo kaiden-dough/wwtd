@@ -29,6 +29,10 @@ class LoginBody(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class TempLoginBody(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
 def _normalize_username(username: str) -> str:
     return username.strip().lower()
 
@@ -109,6 +113,10 @@ def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> Aut
 @router.post("/login", response_model=AuthTokenOut)
 def login(body: LoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
     username = _normalize_username(body.username)
+    temp_display_name = _temp_display_name(username)
+    if temp_display_name is not None and body.password == "dingus":
+        return _temp_login(db, username=username, display_name=temp_display_name)
+
     profile = db.scalar(select(Profile).where(Profile.username == username))
     if profile is None or not profile.password_hash:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
@@ -120,15 +128,30 @@ def login(body: LoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthToken
 
 
 @router.post("/admin-login", response_model=AuthTokenOut)
-def admin_login(db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+def admin_login(body: TempLoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
     """Temporary local-dev shortcut for working on the app without creating accounts."""
+    _validate_temp_password(body.password)
     return _temp_login(db, username="admin", display_name="Admin")
 
 
 @router.post("/temp-user-login", response_model=AuthTokenOut)
-def temp_user_login(db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+def temp_user_login(body: TempLoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
     """Temporary local-dev shortcut for a non-moderator test account."""
+    _validate_temp_password(body.password)
     return _temp_login(db, username="testuser", display_name="Test User")
+
+
+def _validate_temp_password(password: str) -> None:
+    if password != "dingus":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid temporary account password")
+
+
+def _temp_display_name(username: str) -> str | None:
+    if username == "admin":
+        return "Admin"
+    if username == "testuser":
+        return "Test User"
+    return None
 
 
 def _temp_login(db: Session, *, username: str, display_name: str) -> AuthTokenOut:
@@ -137,11 +160,15 @@ def _temp_login(db: Session, *, username: str, display_name: str) -> AuthTokenOu
         profile = Profile(
             id=str(uuid.uuid4()),
             username=username,
-            password_hash=None,
+            password_hash=hash_password("dingus"),
             display_name=display_name,
             balance_points=0.0,
         )
         db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    elif profile.password_hash is None or not verify_password("dingus", profile.password_hash):
+        profile.password_hash = hash_password("dingus")
         db.commit()
         db.refresh(profile)
     return _issue_token(profile)

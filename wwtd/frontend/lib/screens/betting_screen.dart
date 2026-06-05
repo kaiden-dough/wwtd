@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/providers/app_state.dart';
+import 'package:wwtd/utils/app_snack_bar.dart';
 import 'package:wwtd/utils/clipboard_copy.dart';
 import 'package:wwtd/widgets/join_room_sheet.dart';
 import 'package:wwtd/widgets/market_card.dart';
@@ -193,7 +194,7 @@ class _RoomSidebar extends StatelessWidget {
             ],
             if (room != null) ...<Widget>[
               const SizedBox(height: 10),
-              if (room!.isModerator) ...<Widget>[
+              if (room!.canModerate) ...<Widget>[
                 Row(
                   children: <Widget>[
                     Expanded(
@@ -216,7 +217,8 @@ class _RoomSidebar extends StatelessWidget {
                             return;
                           }
                           if (copied) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            showAppSnackBar(
+                              context,
                               const SnackBar(content: Text('Join code copied')),
                             );
                           } else {
@@ -243,6 +245,19 @@ class _RoomSidebar extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        _confirmDeleteRoom(context, appState, room!),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('Delete room'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFB24338),
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -374,7 +389,8 @@ Future<void> _showCreateRoomSheet(
                             room.personName,
                           );
                         } else if (appState.gameError != null) {
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          showAppSnackBar(
+                            sheetContext,
                             SnackBar(content: Text(appState.gameError!)),
                           );
                         }
@@ -393,6 +409,50 @@ Future<void> _showCreateRoomSheet(
   personController.dispose();
 }
 
+Future<void> _confirmDeleteRoom(
+  BuildContext context,
+  AppState appState,
+  GameRoom room,
+) async {
+  final bool? confirmed = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        title: const Text('Delete room?'),
+        content: Text(
+          '${room.personName} will be removed. This cannot be undone.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB24338),
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      );
+    },
+  );
+  if (confirmed != true || !context.mounted) {
+    return;
+  }
+
+  final bool ok = await appState.deleteRoom(room.id);
+  if (!context.mounted) {
+    return;
+  }
+  if (ok) {
+    showAppSnackBar(context, const SnackBar(content: Text('Room deleted')));
+  } else if (appState.gameError != null) {
+    showAppSnackBar(context, SnackBar(content: Text(appState.gameError!)));
+  }
+}
+
 Future<void> _showAddQuestionSheet(
   BuildContext context,
   AppState appState,
@@ -406,6 +466,7 @@ Future<void> _showAddQuestionSheet(
   String questionLead() =>
       'Will ${_formatQuestionTargets(selectedTargetNames())}';
   final TextEditingController controller = TextEditingController();
+  DateTime expiryDate = DateTime.now();
 
   await showDialog<void>(
     context: context,
@@ -490,11 +551,34 @@ Future<void> _showAddQuestionSheet(
                             .toList(growable: false),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final DateTime now = DateTime.now();
+                        final DateTime? picked = await showDatePicker(
+                          context: sheetContext,
+                          initialDate: _dateOnly(expiryDate),
+                          firstDate: DateTime(now.year, now.month, now.day),
+                          lastDate: now.add(const Duration(days: 365)),
+                        );
+                        if (!sheetContext.mounted || picked == null) {
+                          return;
+                        }
+                        setSheetState(() {
+                          expiryDate = _dateOnly(picked);
+                        });
+                      },
+                      icon: const Icon(Icons.event_outlined, size: 18),
+                      label: Text(
+                        'Expires EOD Eastern: ${_formatDate(expiryDate)}',
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: () async {
                         if (people.length > 1 && selectedTargets.isEmpty) {
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          showAppSnackBar(
+                            sheetContext,
                             const SnackBar(
                               content: Text('Pick at least one person'),
                             ),
@@ -503,7 +587,8 @@ Future<void> _showAddQuestionSheet(
                         }
                         final String questionMiddle = controller.text.trim();
                         if (questionMiddle.isEmpty) {
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          showAppSnackBar(
+                            sheetContext,
                             const SnackBar(
                               content: Text('Add the question text'),
                             ),
@@ -519,6 +604,7 @@ Future<void> _showAddQuestionSheet(
                         final PredictionMarket? q = await appState.addQuestion(
                           question,
                           targetNames: selectedTargets.toList(growable: false),
+                          expiresOn: expiryDate,
                         );
                         if (!sheetContext.mounted) {
                           return;
@@ -526,7 +612,8 @@ Future<void> _showAddQuestionSheet(
                         if (q != null) {
                           Navigator.of(sheetContext).pop();
                         } else if (appState.gameError != null) {
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          showAppSnackBar(
+                            sheetContext,
                             SnackBar(content: Text(appState.gameError!)),
                           );
                         }
@@ -556,6 +643,14 @@ String _formatQuestionTargets(List<String> names) {
     return '${names[0]} and ${names[1]}';
   }
   return '${names.take(names.length - 1).join(', ')}, and ${names.last}';
+}
+
+String _formatDate(DateTime value) {
+  return '${value.month}/${value.day}/${value.year}';
+}
+
+DateTime _dateOnly(DateTime value) {
+  return DateTime(value.year, value.month, value.day);
 }
 
 Future<void> _showJoinCodeDialog(
@@ -605,9 +700,10 @@ Future<void> _showJoinCodeDialog(
                   return;
                 }
                 if (copied) {
-                  ScaffoldMessenger.of(
+                  showAppSnackBar(
                     context,
-                  ).showSnackBar(const SnackBar(content: Text('Code copied')));
+                    const SnackBar(content: Text('Code copied')),
+                  );
                 } else {
                   await _showManualCopyCodeDialog(context, code);
                 }

@@ -1,4 +1,6 @@
 import secrets
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -26,6 +28,40 @@ def _gen_code(used: set[str]) -> str:
             used.add(code)
             return code
     raise RuntimeError("Could not allocate join code")
+
+
+_EASTERN = ZoneInfo("America/New_York")
+
+
+def _parse_db_datetime(value) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _eastern_eod_for_created_at(created_at) -> datetime:
+    eastern_day = _parse_db_datetime(created_at).astimezone(_EASTERN).date()
+    next_midnight = datetime.combine(
+        eastern_day + timedelta(days=1),
+        time.min,
+        tzinfo=_EASTERN,
+    )
+    return next_midnight.astimezone(UTC)
+
+
+def _backfill_question_expiry(conn) -> None:
+    rows = conn.execute(
+        text("SELECT id, created_at FROM questions WHERE betting_closes_at IS NULL")
+    ).fetchall()
+    for question_id, created_at in rows:
+        conn.execute(
+            text("UPDATE questions SET betting_closes_at = :closes WHERE id = :id"),
+            {"id": question_id, "closes": _eastern_eod_for_created_at(created_at)},
+        )
 
 
 def _migrate_legacy_markets(conn) -> None:
@@ -237,6 +273,15 @@ def _migrate_question_targets_sqlite(conn) -> None:
     )
 
 
+def _migrate_question_expiry_sqlite(conn) -> None:
+    if not _table_exists(conn, "questions"):
+        return
+    cols = _column_names(conn, "questions")
+    if "betting_closes_at" not in cols:
+        conn.execute(text("ALTER TABLE questions ADD COLUMN betting_closes_at DATETIME"))
+    _backfill_question_expiry(conn)
+
+
 def _migrate_room_member_balance_postgres(conn) -> None:
     conn.execute(
         text(
@@ -311,6 +356,13 @@ def _migrate_profiles_auth_postgres(conn) -> None:
     )
 
 
+def _migrate_question_expiry_postgres(conn) -> None:
+    conn.execute(
+        text("ALTER TABLE questions ADD COLUMN IF NOT EXISTS betting_closes_at TIMESTAMP WITH TIME ZONE")
+    )
+    _backfill_question_expiry(conn)
+
+
 def run_migrations(engine: Engine) -> None:
     dialect = engine.dialect.name
     if dialect == "sqlite":
@@ -326,9 +378,11 @@ def run_migrations(engine: Engine) -> None:
             _migrate_legacy_markets(conn)
             _migrate_room_people_sqlite(conn)
             _migrate_question_targets_sqlite(conn)
+            _migrate_question_expiry_sqlite(conn)
     elif dialect == "postgresql":
         with engine.begin() as conn:
             _migrate_profiles_auth_postgres(conn)
             _migrate_room_member_balance_postgres(conn)
             _migrate_room_people_postgres(conn)
             _migrate_question_targets_postgres(conn)
+            _migrate_question_expiry_postgres(conn)

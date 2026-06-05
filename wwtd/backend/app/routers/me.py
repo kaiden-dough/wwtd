@@ -61,7 +61,11 @@ def list_my_bets(
     def _bet_is_past(question: Question) -> bool:
         if question.status == "resolved":
             return True
-        return not betting_open_for(status=question.status, created_at=question.created_at)
+        return not betting_open_for(
+            status=question.status,
+            created_at=question.created_at,
+            betting_closes_at=question.betting_closes_at,
+        )
 
     rows = sorted(
         rows,
@@ -80,7 +84,9 @@ def list_my_bets(
             market_status=question.status,
             winning_side=question.winning_side,
             market_betting_open=betting_open_for(
-                status=question.status, created_at=question.created_at
+                status=question.status,
+                created_at=question.created_at,
+                betting_closes_at=question.betting_closes_at,
             ),
             created_at=bet.created_at,
         )

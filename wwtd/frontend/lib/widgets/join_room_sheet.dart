@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:wwtd/models/game_room.dart';
 import 'package:wwtd/models/room_discover.dart';
 import 'package:wwtd/providers/app_state.dart';
+import 'package:wwtd/utils/app_snack_bar.dart';
 
 Future<void> showJoinRoomSheet(BuildContext context) {
   return showDialog<void>(
@@ -91,13 +92,12 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
     setState(() => _joining = false);
     if (joined != null) {
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      showAppSnackBar(
+        context,
         SnackBar(content: Text('Joined ${joined.personName}\'s room')),
       );
     } else if (appState.gameError != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(appState.gameError!)));
+      showAppSnackBar(context, SnackBar(content: Text(appState.gameError!)));
     }
   }
 
