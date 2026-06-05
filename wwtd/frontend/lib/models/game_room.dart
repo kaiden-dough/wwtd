@@ -7,6 +7,7 @@ class GameRoom {
     required this.roomType,
     required this.moderatorName,
     required this.isModerator,
+    required this.canModerate,
     required this.balancePoints,
   });
 
@@ -17,6 +18,7 @@ class GameRoom {
   final String roomType;
   final String moderatorName;
   final bool isModerator;
+  final bool canModerate;
   final double balancePoints;
 
   bool get isGroup => roomType == 'group' || personNames.length > 1;
@@ -34,6 +36,7 @@ class GameRoom {
       roomType: json['room_type'] as String? ?? 'individual',
       moderatorName: json['moderator_name'] as String? ?? '',
       isModerator: json['is_moderator'] as bool? ?? false,
+      canModerate: json['can_moderate'] as bool? ?? false,
       balancePoints: (json['balance_points'] as num?)?.toDouble() ?? 500,
     );
   }

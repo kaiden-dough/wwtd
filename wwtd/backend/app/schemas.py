@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -109,6 +109,7 @@ class RoomOut(BaseModel):
     room_type: str = "individual"
     moderator_name: str
     is_moderator: bool = False
+    can_moderate: bool = False
     balance_points: float
     created_at: datetime
 
@@ -116,6 +117,7 @@ class RoomOut(BaseModel):
 class QuestionCreate(BaseModel):
     question: str = Field(min_length=1)
     target_names: list[str] = Field(default_factory=list)
+    expires_on: date | None = None
 
 
 class QuestionOut(BaseModel):
@@ -131,6 +133,7 @@ class QuestionOut(BaseModel):
     status: str
     winning_side: str | None = None
     created_at: datetime
+    betting_closes_at: datetime
     betting_open: bool = True
     yes_wagered_points: float
     no_wagered_points: float
@@ -141,6 +144,10 @@ class QuestionOut(BaseModel):
 
 class QuestionResolve(BaseModel):
     winning_side: str = Field(pattern="^(yes|no)$")
+
+
+class QuestionExpiryUpdate(BaseModel):
+    expires_on: date
 
 
 class BetCreate(BaseModel):

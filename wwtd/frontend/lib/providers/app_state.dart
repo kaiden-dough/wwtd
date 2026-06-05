@@ -270,7 +270,10 @@ class AppState extends ChangeNotifier {
     required String username,
     required String password,
   }) async {
-    final String? validationError = _validateCredentials(username, password);
+    final String? validationError = _validateLoginCredentials(
+      username,
+      password,
+    );
     if (validationError != null) {
       _authError = validationError;
       notifyListeners();
@@ -280,14 +283,6 @@ class AppState extends ChangeNotifier {
     await _authenticate(
       () => _api.login(username: username, password: password),
     );
-  }
-
-  Future<void> adminLogin() async {
-    await _authenticate(() => _api.adminLogin());
-  }
-
-  Future<void> tempUserLogin() async {
-    await _authenticate(() => _api.tempUserLogin());
   }
 
   Future<void> _authenticate(Future<UserProfile> Function() request) async {
@@ -393,6 +388,17 @@ class AppState extends ChangeNotifier {
     }
     if (password.length < 8) {
       return 'Password must be at least 8 characters';
+    }
+    return null;
+  }
+
+  String? _validateLoginCredentials(String username, String password) {
+    final String normalized = username.trim().toLowerCase();
+    if (!RegExp(r'^[a-zA-Z0-9_]{3,32}$').hasMatch(normalized)) {
+      return 'Username must be 3–32 characters: letters, numbers, underscore only';
+    }
+    if (password.isEmpty) {
+      return 'Enter your password';
     }
     return null;
   }
@@ -574,6 +580,7 @@ class AppState extends ChangeNotifier {
   Future<PredictionMarket?> addQuestion(
     String questionText, {
     List<String> targetNames = const <String>[],
+    DateTime? expiresOn,
   }) async {
     if (!isLoggedIn || _selectedRoomId == null) {
       _gameError = 'Select a room first';
@@ -589,6 +596,7 @@ class AppState extends ChangeNotifier {
         roomId: _selectedRoomId!,
         question: q,
         targetNames: targetNames,
+        expiresOn: expiresOn,
       );
       _questions.insert(0, question);
       _gameError = null;
@@ -613,7 +621,7 @@ class AppState extends ChangeNotifier {
     if (!isLoggedIn || _selectedRoomId == null) {
       return false;
     }
-    if (!(selectedRoom?.isModerator ?? false)) {
+    if (!(selectedRoom?.canModerate ?? false)) {
       _gameError = 'Only the moderator can delete questions';
       notifyListeners();
       return false;
@@ -642,6 +650,51 @@ class AppState extends ChangeNotifier {
       return false;
     } catch (e) {
       _gameError = 'Delete failed: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteRoom(String roomId) async {
+    if (!isLoggedIn) {
+      return false;
+    }
+    GameRoom? room;
+    for (final GameRoom candidate in _rooms) {
+      if (candidate.id == roomId) {
+        room = candidate;
+        break;
+      }
+    }
+    if (!(room?.canModerate ?? false)) {
+      _gameError = 'Only the moderator can delete rooms';
+      notifyListeners();
+      return false;
+    }
+    try {
+      await _api.deleteRoom(roomId: roomId);
+      _rooms.removeWhere((GameRoom room) => room.id == roomId);
+      _roomLeaderboards.removeWhere(
+        (RoomLeaderboard board) => board.roomId == roomId,
+      );
+      _myBets.removeWhere((UserBet bet) => bet.roomId == roomId);
+      if (_selectedRoomId == roomId) {
+        _selectedRoomId = _rooms.isEmpty ? null : _rooms.first.id;
+      }
+      await _loadRoomContext();
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Delete room failed: $e';
       notifyListeners();
       return false;
     }
@@ -725,14 +778,54 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> updateMarketExpiry({
+    required String marketId,
+    required DateTime expiresOn,
+  }) async {
+    if (!isLoggedIn) {
+      return false;
+    }
+    try {
+      final PredictionMarket updated = await _api.updateMarketExpiry(
+        marketId: marketId,
+        expiresOn: expiresOn,
+      );
+      final int index = _questions.indexWhere(
+        (PredictionMarket m) => m.id == marketId,
+      );
+      if (index != -1) {
+        _questions[index] = updated;
+      }
+      _gameError = null;
+      notifyListeners();
+      return true;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return false;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _gameError = 'Expiry update failed: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
   bool canResolveMarket(PredictionMarket market) {
     return isLoggedIn &&
         (market.isOpen || market.isResolved) &&
-        (selectedRoom?.isModerator ?? false);
+        (selectedRoom?.canModerate ?? false);
   }
 
   bool canDeleteQuestion(PredictionMarket market) {
-    return isLoggedIn && (selectedRoom?.isModerator ?? false);
+    return isLoggedIn && (selectedRoom?.canModerate ?? false);
+  }
+
+  bool canChangeMarketExpiry(PredictionMarket market) {
+    return isLoggedIn && (selectedRoom?.canModerate ?? false);
   }
 
   int currentUserRank() {

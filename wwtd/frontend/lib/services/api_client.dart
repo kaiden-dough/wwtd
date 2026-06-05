@@ -100,28 +100,6 @@ class ApiClient {
     return _profileFromAuthResponse(response);
   }
 
-  Future<UserProfile> adminLogin() async {
-    final http.Response response = await _client.post(
-      _uri('/api/auth/admin-login'),
-      headers: _headers(jsonBody: true),
-    );
-    if (response.statusCode != 200) {
-      throw _errorFromResponse(response);
-    }
-    return _profileFromAuthResponse(response);
-  }
-
-  Future<UserProfile> tempUserLogin() async {
-    final http.Response response = await _client.post(
-      _uri('/api/auth/temp-user-login'),
-      headers: _headers(jsonBody: true),
-    );
-    if (response.statusCode != 200) {
-      throw _errorFromResponse(response);
-    }
-    return _profileFromAuthResponse(response);
-  }
-
   UserProfile _profileFromAuthResponse(http.Response response) {
     final Map<String, dynamic> body =
         jsonDecode(response.body) as Map<String, dynamic>;
@@ -278,14 +256,19 @@ class ApiClient {
     required String roomId,
     required String question,
     List<String> targetNames = const <String>[],
+    DateTime? expiresOn,
   }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'question': question.trim(),
+      'target_names': targetNames,
+    };
+    if (expiresOn != null) {
+      body['expires_on'] = _dateOnly(expiresOn);
+    }
     final http.Response response = await _client.post(
       _uri('/api/rooms/$roomId/questions'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, dynamic>{
-        'question': question.trim(),
-        'target_names': targetNames,
-      }),
+      body: jsonEncode(body),
     );
     if (response.statusCode != 201) {
       throw _errorFromResponse(response);
@@ -295,12 +278,28 @@ class ApiClient {
     );
   }
 
+  String _dateOnly(DateTime value) {
+    final String month = value.month.toString().padLeft(2, '0');
+    final String day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
   Future<void> deleteQuestion({
     required String roomId,
     required String questionId,
   }) async {
     final http.Response response = await _client.delete(
       _uri('/api/rooms/$roomId/questions/$questionId'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 204) {
+      throw _errorFromResponse(response);
+    }
+  }
+
+  Future<void> deleteRoom({required String roomId}) async {
+    final http.Response response = await _client.delete(
+      _uri('/api/rooms/$roomId'),
       headers: _headers(),
     );
     if (response.statusCode != 204) {
@@ -331,6 +330,23 @@ class ApiClient {
     final http.Response response = await _client.post(
       _uri('/api/markets/$marketId/unresolve'),
       headers: _headers(jsonBody: true),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return PredictionMarket.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<PredictionMarket> updateMarketExpiry({
+    required String marketId,
+    required DateTime expiresOn,
+  }) async {
+    final http.Response response = await _client.patch(
+      _uri('/api/markets/$marketId/expiry'),
+      headers: _headers(jsonBody: true),
+      body: jsonEncode(<String, dynamic>{'expires_on': _dateOnly(expiresOn)}),
     );
     if (response.statusCode != 200) {
       throw _errorFromResponse(response);

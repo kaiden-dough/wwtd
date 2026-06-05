@@ -217,10 +217,12 @@ class _LoginScreenState extends State<LoginScreen>
                             obscureText: true,
                             autocorrect: false,
                             textInputAction: TextInputAction.done,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Password',
-                              hintText: 'at least 8 characters',
-                              border: OutlineInputBorder(),
+                              hintText: isRegister
+                                  ? 'at least 8 characters'
+                                  : 'enter password',
+                              border: const OutlineInputBorder(),
                             ),
                             onChanged: (_) {
                               appState.clearAuthError();
@@ -269,31 +271,6 @@ class _LoginScreenState extends State<LoginScreen>
                                 : Text(
                                     isRegister ? 'Create account' : 'Log in',
                                   ),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: appState.authLoading
-                                ? null
-                                : () {
-                                    appState.clearAuthError();
-                                    appState.adminLogin();
-                                  },
-                            icon: const Icon(
-                              Icons.admin_panel_settings_outlined,
-                              size: 18,
-                            ),
-                            label: const Text('Temporary admin login'),
-                          ),
-                          const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: appState.authLoading
-                                ? null
-                                : () {
-                                    appState.clearAuthError();
-                                    appState.tempUserLogin();
-                                  },
-                            icon: const Icon(Icons.person_outline, size: 18),
-                            label: const Text('Temporary user login'),
                           ),
                         ],
                       ),
