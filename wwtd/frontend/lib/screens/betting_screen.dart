@@ -249,6 +249,16 @@ class _RoomSidebar extends StatelessWidget {
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        _showEditRoomSheet(context, appState, room!),
+                    icon: const Icon(Icons.tune_outlined, size: 18),
+                    label: const Text('Room settings'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
                   child: TextButton.icon(
                     onPressed: () =>
                         _confirmDeleteRoom(context, appState, room!),
@@ -295,11 +305,104 @@ class _MarketBar extends StatelessWidget {
   }
 }
 
+Widget _roomPeopleFields({
+  required bool isGroup,
+  required List<TextEditingController> controllers,
+  required StateSetter setSheetState,
+}) {
+  if (!isGroup) {
+    return TextField(
+      controller: controllers.first,
+      decoration: const InputDecoration(
+        labelText: 'Who is this about?',
+        hintText: 'e.g. Alex',
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      for (int index = 0; index < controllers.length; index++) ...<Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: TextField(
+                controller: controllers[index],
+                decoration: InputDecoration(
+                  labelText: 'Person ${index + 1}',
+                  hintText: index == 0
+                      ? 'e.g. Bob'
+                      : index == 1
+                      ? 'e.g. Josh'
+                      : 'e.g. Dillon',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ),
+            if (controllers.length > 2) ...<Widget>[
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Remove person',
+                onPressed: () {
+                  final TextEditingController removed = controllers.removeAt(
+                    index,
+                  );
+                  removed.dispose();
+                  setSheetState(() {});
+                },
+                icon: const Icon(Icons.remove_circle_outline),
+              ),
+            ],
+          ],
+        ),
+        if (index != controllers.length - 1) const SizedBox(height: 10),
+      ],
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: () {
+          controllers.add(TextEditingController());
+          setSheetState(() {});
+        },
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('Add person'),
+      ),
+    ],
+  );
+}
+
+List<String> _peopleFromControllers(
+  List<TextEditingController> controllers, {
+  required bool isGroup,
+}) {
+  final Iterable<TextEditingController> activeControllers = isGroup
+      ? controllers
+      : controllers.take(1);
+  return activeControllers
+      .map((TextEditingController controller) => controller.text.trim())
+      .where((String value) => value.isNotEmpty)
+      .toList(growable: false);
+}
+
+void _ensureGroupPersonInputs(
+  List<TextEditingController> controllers, {
+  required int minimum,
+}) {
+  while (controllers.length < minimum) {
+    controllers.add(TextEditingController());
+  }
+}
+
 Future<void> _showCreateRoomSheet(
   BuildContext context,
   AppState appState,
 ) async {
-  final TextEditingController personController = TextEditingController();
+  final List<TextEditingController> personControllers = <TextEditingController>[
+    TextEditingController(),
+    TextEditingController(),
+  ];
+  final TextEditingController joinCodeController = TextEditingController();
   bool isGroup = false;
   await showDialog<void>(
     context: context,
@@ -350,33 +453,42 @@ Future<void> _showCreateRoomSheet(
                       onSelectionChanged: (Set<bool> value) {
                         setSheetState(() {
                           isGroup = value.first;
+                          if (isGroup) {
+                            _ensureGroupPersonInputs(
+                              personControllers,
+                              minimum: 2,
+                            );
+                          }
                         });
                       },
                     ),
                     const SizedBox(height: 12),
+                    _roomPeopleFields(
+                      isGroup: isGroup,
+                      controllers: personControllers,
+                      setSheetState: setSheetState,
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller: personController,
-                      decoration: InputDecoration(
-                        labelText: isGroup
-                            ? 'People in this room'
-                            : 'Who is this about?',
-                        hintText: isGroup
-                            ? 'e.g. Bob, Josh, Dillon'
-                            : 'e.g. Alex',
-                        border: const OutlineInputBorder(),
+                      controller: joinCodeController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: 'Custom join code',
+                        hintText: 'Optional, 4-8 letters or numbers',
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: () async {
-                        final List<String> people = personController.text
-                            .split(',')
-                            .map((String value) => value.trim())
-                            .where((String value) => value.isNotEmpty)
-                            .toList(growable: false);
+                        final List<String> people = _peopleFromControllers(
+                          personControllers,
+                          isGroup: isGroup,
+                        );
                         final GameRoom? room = await appState.createRoom(
                           personNames: people,
                           isGroup: isGroup,
+                          joinCode: joinCodeController.text,
                         );
                         if (!sheetContext.mounted) {
                           return;
@@ -406,7 +518,140 @@ Future<void> _showCreateRoomSheet(
       );
     },
   );
-  personController.dispose();
+  for (final TextEditingController controller in personControllers) {
+    controller.dispose();
+  }
+  joinCodeController.dispose();
+}
+
+Future<void> _showEditRoomSheet(
+  BuildContext context,
+  AppState appState,
+  GameRoom room,
+) async {
+  final List<String> initialPeople = room.personNames.isEmpty
+      ? <String>['']
+      : room.personNames;
+  final List<TextEditingController> personControllers = initialPeople
+      .map((String person) => TextEditingController(text: person))
+      .toList(growable: true);
+  _ensureGroupPersonInputs(personControllers, minimum: room.isGroup ? 2 : 1);
+  final TextEditingController joinCodeController = TextEditingController(
+    text: room.joinCode,
+  );
+  bool isGroup = room.isGroup;
+  await showDialog<void>(
+    context: context,
+    builder: (BuildContext sheetContext) {
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: StatefulBuilder(
+          builder: (BuildContext sheetContext, StateSetter setSheetState) {
+            return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: 20 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      'Room settings',
+                      style: Theme.of(sheetContext).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    SegmentedButton<bool>(
+                      segments: const <ButtonSegment<bool>>[
+                        ButtonSegment<bool>(
+                          value: false,
+                          icon: Icon(Icons.person_outline),
+                          label: Text('Individual'),
+                        ),
+                        ButtonSegment<bool>(
+                          value: true,
+                          icon: Icon(Icons.groups_outlined),
+                          label: Text('Group'),
+                        ),
+                      ],
+                      selected: <bool>{isGroup},
+                      onSelectionChanged: (Set<bool> value) {
+                        setSheetState(() {
+                          isGroup = value.first;
+                          if (isGroup) {
+                            _ensureGroupPersonInputs(
+                              personControllers,
+                              minimum: 2,
+                            );
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _roomPeopleFields(
+                      isGroup: isGroup,
+                      controllers: personControllers,
+                      setSheetState: setSheetState,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: joinCodeController,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: 'Join code',
+                        hintText: '4-8 letters or numbers',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: () async {
+                        final List<String> people = _peopleFromControllers(
+                          personControllers,
+                          isGroup: isGroup,
+                        );
+                        final GameRoom? updated = await appState.updateRoom(
+                          roomId: room.id,
+                          personNames: people,
+                          isGroup: isGroup,
+                          joinCode: joinCodeController.text,
+                        );
+                        if (!sheetContext.mounted) {
+                          return;
+                        }
+                        if (updated != null) {
+                          Navigator.of(sheetContext).pop();
+                          showAppSnackBar(
+                            context,
+                            const SnackBar(content: Text('Room updated')),
+                          );
+                        } else if (appState.gameError != null) {
+                          showAppSnackBar(
+                            sheetContext,
+                            SnackBar(content: Text(appState.gameError!)),
+                          );
+                        }
+                      },
+                      child: const Text('Save room'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+  for (final TextEditingController controller in personControllers) {
+    controller.dispose();
+  }
+  joinCodeController.dispose();
 }
 
 Future<void> _confirmDeleteRoom(

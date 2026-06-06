@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -30,9 +31,12 @@ from app.schemas import (
     RoomDiscoverOut,
     RoomJoin,
     RoomOut,
+    RoomUpdate,
 )
 
 router = APIRouter(tags=["rooms"])
+
+_JOIN_CODE_RE = re.compile(r"^[A-Z0-9]{4,8}$")
 
 
 def _get_or_create_person(db: Session, name: str) -> Person:
@@ -57,6 +61,47 @@ def _normalize_names(names: list[str]) -> list[str]:
         normalized.append(value)
         seen.add(key)
     return normalized
+
+
+def _normalize_join_code(join_code: str | None) -> str | None:
+    if join_code is None:
+        return None
+    code = join_code.strip().upper()
+    if not code:
+        return None
+    if not _JOIN_CODE_RE.match(code):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Join code must be 4-8 letters or numbers",
+        )
+    return code
+
+
+def _join_code_available(db: Session, code: str, *, room_id: str | None = None) -> bool:
+    stmt = select(Room.id).where(Room.join_code == code)
+    existing = db.scalar(stmt)
+    return existing is None or existing == room_id
+
+
+def _room_people_from_body(
+    db: Session,
+    *,
+    person_names: list[str],
+    person_name: str | None,
+) -> list[Person]:
+    requested_names = _normalize_names([
+        *person_names,
+        *([person_name] if person_name else []),
+    ])
+    if not requested_names:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Add at least one person")
+    return [_get_or_create_person(db, name) for name in requested_names]
+
+
+def _set_room_people(db: Session, room: Room, people: list[Person]) -> None:
+    db.query(RoomPerson).filter(RoomPerson.room_id == room.id).delete()
+    room.person_id = people[0].id
+    _add_room_people(db, room, people)
 
 
 def _room_person_names(db: Session, room: Room, fallback: Person | None = None) -> list[str]:
@@ -192,6 +237,12 @@ def _is_hidden_admin(profile: Profile) -> bool:
 
 def _can_moderate(room: Room, profile: Profile) -> bool:
     return _is_moderator(room, profile) or _is_hidden_admin(profile)
+
+
+def _current_room_member(db: Session, room: Room, profile: Profile) -> RoomMember | None:
+    if _is_hidden_admin(profile) and not _is_member(db, room.id, profile.id):
+        return None
+    return _add_member(db, room.id, profile.id)
 
 
 def _run_questions_query(
@@ -427,16 +478,19 @@ def create_room(
     db: Annotated[Session, Depends(get_db)],
     profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> RoomOut:
-    requested_names = _normalize_names([
-        *body.person_names,
-        *([body.person_name] if body.person_name else []),
-    ])
-    if not requested_names:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Add at least one person")
-    people = [_get_or_create_person(db, name) for name in requested_names]
+    people = _room_people_from_body(
+        db,
+        person_names=body.person_names,
+        person_name=body.person_name,
+    )
+    if body.room_type == "group" and len(people) < 2:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Group rooms need at least two people")
+    code = _normalize_join_code(body.join_code) or generate_join_code(db)
+    if not _join_code_available(db, code):
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Join code is already in use")
     person = people[0]
     room = Room(
-        join_code=generate_join_code(db),
+        join_code=code,
         person_id=person.id,
         room_type="group" if len(people) > 1 or body.room_type == "group" else "individual",
         created_by=profile.id,
@@ -448,6 +502,46 @@ def create_room(
     db.commit()
     db.refresh(room)
     return _room_out(db, room, person, profile, member, profile)
+
+
+@router.patch("/rooms/{room_id}", response_model=RoomOut)
+def update_room(
+    room_id: str,
+    body: RoomUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> RoomOut:
+    row = db.execute(
+        select(Room, Person, Profile)
+        .join(Person, Room.person_id == Person.id)
+        .join(Profile, Room.created_by == Profile.id)
+        .where(Room.id == room_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+    room, _person, moderator = row
+    if not _can_moderate(room, profile):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Only the moderator can edit rooms")
+
+    people = _room_people_from_body(
+        db,
+        person_names=body.person_names,
+        person_name=body.person_name,
+    )
+    if body.room_type == "group" and len(people) < 2:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Group rooms need at least two people")
+    code = _normalize_join_code(body.join_code)
+    if code is not None:
+        if not _join_code_available(db, code, room_id=room.id):
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="Join code is already in use")
+        room.join_code = code
+
+    _set_room_people(db, room, people)
+    room.room_type = "group" if len(people) > 1 or body.room_type == "group" else "individual"
+    member = _current_room_member(db, room, profile)
+    db.commit()
+    db.refresh(room)
+    return _room_out(db, room, people[0], profile, member, moderator)
 
 
 @router.post("/rooms/join", response_model=RoomOut)
