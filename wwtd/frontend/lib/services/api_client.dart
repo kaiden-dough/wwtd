@@ -188,16 +188,47 @@ class ApiClient {
   Future<GameRoom> createRoom({
     required List<String> personNames,
     required String roomType,
+    String? joinCode,
   }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'person_names': personNames.map((String name) => name.trim()).toList(),
+      'room_type': roomType,
+    };
+    final String code = joinCode?.trim().toUpperCase() ?? '';
+    if (code.isNotEmpty) {
+      body['join_code'] = code;
+    }
     final http.Response response = await _client.post(
       _uri('/api/rooms'),
       headers: _headers(jsonBody: true),
-      body: jsonEncode(<String, dynamic>{
-        'person_names': personNames.map((String name) => name.trim()).toList(),
-        'room_type': roomType,
-      }),
+      body: jsonEncode(body),
     );
     if (response.statusCode != 201) {
+      throw _errorFromResponse(response);
+    }
+    return GameRoom.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<GameRoom> updateRoom({
+    required String roomId,
+    required List<String> personNames,
+    required String roomType,
+    String? joinCode,
+  }) async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      'person_names': personNames.map((String name) => name.trim()).toList(),
+      'room_type': roomType,
+    };
+    final String code = joinCode?.trim().toUpperCase() ?? '';
+    if (code.isNotEmpty) {
+      body['join_code'] = code;
+    }
+    final http.Response response = await _client.patch(
+      _uri('/api/rooms/$roomId'),
+      headers: _headers(jsonBody: true),
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 200) {
       throw _errorFromResponse(response);
     }
     return GameRoom.fromJson(jsonDecode(response.body) as Map<String, dynamic>);

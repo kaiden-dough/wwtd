@@ -515,6 +515,7 @@ class AppState extends ChangeNotifier {
   Future<GameRoom?> createRoom({
     required List<String> personNames,
     required bool isGroup,
+    String? joinCode,
   }) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to create a room';
@@ -532,12 +533,19 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+    final String normalizedCode = _normalizeJoinCode(joinCode);
+    if (normalizedCode.isNotEmpty && !_validJoinCode(normalizedCode)) {
+      _gameError = 'Join code must be 4-8 letters or numbers';
+      notifyListeners();
+      return null;
+    }
     try {
       final GameRoom room = await _api.createRoom(
         personNames: isGroup
             ? normalizedPeople
             : <String>[normalizedPeople.first],
         roomType: isGroup ? 'group' : 'individual',
+        joinCode: normalizedCode.isEmpty ? null : normalizedCode,
       );
       _rooms.insert(0, room);
       _selectedRoomId = room.id;
@@ -562,6 +570,84 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<GameRoom?> updateRoom({
+    required String roomId,
+    required List<String> personNames,
+    required bool isGroup,
+    required String joinCode,
+  }) async {
+    if (!isLoggedIn) {
+      _gameError = 'Sign in to edit a room';
+      notifyListeners();
+      return null;
+    }
+    GameRoom? room;
+    for (final GameRoom candidate in _rooms) {
+      if (candidate.id == roomId) {
+        room = candidate;
+        break;
+      }
+    }
+    if (!(room?.canModerate ?? false)) {
+      _gameError = 'Only the moderator can edit rooms';
+      notifyListeners();
+      return null;
+    }
+    final List<String> normalizedPeople = _normalizePeople(personNames);
+    if (normalizedPeople.isEmpty) {
+      _gameError = 'Add at least one person';
+      notifyListeners();
+      return null;
+    }
+    if (isGroup && normalizedPeople.length < 2) {
+      _gameError = 'Group rooms need at least two people';
+      notifyListeners();
+      return null;
+    }
+    final String normalizedCode = _normalizeJoinCode(joinCode);
+    if (!_validJoinCode(normalizedCode)) {
+      _gameError = 'Join code must be 4-8 letters or numbers';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final GameRoom updated = await _api.updateRoom(
+        roomId: roomId,
+        personNames: isGroup
+            ? normalizedPeople
+            : <String>[normalizedPeople.first],
+        roomType: isGroup ? 'group' : 'individual',
+        joinCode: normalizedCode,
+      );
+      final int index = _rooms.indexWhere((GameRoom room) => room.id == roomId);
+      if (index == -1) {
+        _rooms.insert(0, updated);
+      } else {
+        _rooms[index] = updated;
+      }
+      _selectedRoomId = updated.id;
+      await Future.wait<void>(<Future<void>>[
+        _loadQuestionsForSelectedRoom(),
+        _loadLeaderboardForRoom(updated.id),
+      ]);
+      _gameError = null;
+      notifyListeners();
+      return updated;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return null;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _gameError = 'Could not update room: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
   List<String> _normalizePeople(List<String> people) {
     final List<String> normalized = <String>[];
     final Set<String> seen = <String>{};
@@ -575,6 +661,15 @@ class AppState extends ChangeNotifier {
       seen.add(key);
     }
     return normalized;
+  }
+
+  String _normalizeJoinCode(String? joinCode) {
+    return (joinCode ?? '').trim().toUpperCase();
+  }
+
+  bool _validJoinCode(String joinCode) {
+    final RegExp pattern = RegExp(r'^[A-Z0-9]{4,8}$');
+    return pattern.hasMatch(joinCode);
   }
 
   Future<PredictionMarket?> addQuestion(

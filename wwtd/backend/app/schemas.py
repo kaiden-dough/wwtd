@@ -84,6 +84,14 @@ class RoomCreate(BaseModel):
     person_name: str | None = Field(default=None, min_length=1, max_length=200)
     person_names: list[str] = Field(default_factory=list)
     room_type: str = Field(default="individual", pattern="^(individual|group)$")
+    join_code: str | None = Field(default=None, min_length=4, max_length=8)
+
+
+class RoomUpdate(BaseModel):
+    person_name: str | None = Field(default=None, min_length=1, max_length=200)
+    person_names: list[str] = Field(default_factory=list)
+    room_type: str = Field(default="individual", pattern="^(individual|group)$")
+    join_code: str | None = Field(default=None, min_length=4, max_length=8)
 
 
 class RoomJoin(BaseModel):
