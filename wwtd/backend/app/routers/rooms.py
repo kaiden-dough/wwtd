@@ -446,6 +446,45 @@ def discover_rooms(
     return results
 
 
+@router.get("/rooms/{room_id}/preview", response_model=RoomDiscoverOut)
+def preview_room(
+    room_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> RoomDiscoverOut:
+    row = db.execute(
+        select(Room, Person, Profile, func.count(RoomMember.id).label("member_count"))
+        .join(Person, Room.person_id == Person.id)
+        .join(Profile, Room.created_by == Profile.id)
+        .outerjoin(RoomMember, RoomMember.room_id == Room.id)
+        .where(Room.id == room_id)
+        .group_by(
+            Room.id,
+            Room.person_id,
+            Room.room_type,
+            Person.id,
+            Person.name,
+            Profile.id,
+            Profile.username,
+            Profile.display_name,
+            Profile.email,
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Room not found")
+    room, person, moderator, members = row
+    person_names = _room_person_names(db, room, person)
+    return RoomDiscoverOut(
+        id=room.id,
+        person_name=_room_label(person_names),
+        person_names=person_names,
+        room_type=room.room_type,
+        moderator_name=_moderator_label(moderator),
+        member_count=int(members or 0),
+        is_member=_is_member(db, room.id, profile.id),
+    )
+
+
 @router.get("/rooms", response_model=list[RoomOut])
 def list_my_rooms(
     db: Annotated[Session, Depends(get_db)],

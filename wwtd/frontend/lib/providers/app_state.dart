@@ -10,6 +10,7 @@ import 'package:wwtd/models/prediction_market.dart';
 import 'package:wwtd/models/user_bet.dart';
 import 'package:wwtd/models/user_profile.dart';
 import 'package:wwtd/services/api_client.dart';
+import 'package:wwtd/utils/room_url.dart';
 
 class AppState extends ChangeNotifier {
   AppState({ApiClient? apiClient}) : _api = apiClient ?? ApiClient() {
@@ -51,6 +52,15 @@ class AppState extends ChangeNotifier {
     }
     for (final GameRoom room in _rooms) {
       if (room.id == _selectedRoomId) {
+        return room;
+      }
+    }
+    return null;
+  }
+
+  GameRoom? roomById(String roomId) {
+    for (final GameRoom room in _rooms) {
+      if (room.id == roomId) {
         return room;
       }
     }
@@ -159,6 +169,7 @@ class AppState extends ChangeNotifier {
 
       _gameError = null;
       _ensureSelectedRoomValid();
+      _syncSelectedRoomUrl(allowExistingRoomOverride: false);
       await _loadRoomContext();
     } finally {
       _setGameLoading(false);
@@ -220,6 +231,7 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshRooms() async {
     _rooms = await _api.fetchRooms();
     _ensureSelectedRoomValid();
+    _syncSelectedRoomUrl(allowExistingRoomOverride: false);
   }
 
   Future<void> _loadQuestionsForSelectedRoom() async {
@@ -235,6 +247,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     _selectedRoomId = roomId;
+    _syncSelectedRoomUrl();
     _setGameLoading(true);
     try {
       await _loadRoomContext();
@@ -469,6 +482,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<RoomDiscover?> fetchRoomPreview(String roomId) async {
+    if (!isLoggedIn) {
+      _gameError = 'Sign in to open this room link';
+      notifyListeners();
+      return null;
+    }
+    try {
+      final RoomDiscover room = await _api.fetchRoomPreview(roomId);
+      _gameError = null;
+      notifyListeners();
+      return room;
+    } on ApiException catch (e) {
+      _gameError = e.message;
+      notifyListeners();
+      return null;
+    } on http.ClientException {
+      _gameError = _offlineMessage;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _gameError = 'Could not open room link: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<GameRoom?> joinRoom({required String joinCode, String? roomId}) async {
     if (!isLoggedIn) {
       _gameError = 'Sign in to join a room';
@@ -490,6 +529,7 @@ class AppState extends ChangeNotifier {
         _rooms[existing] = room;
       }
       _selectedRoomId = room.id;
+      _syncSelectedRoomUrl();
       await Future.wait<void>(<Future<void>>[
         _loadRoomContext(),
         _api.fetchMyBets().then((List<UserBet> bets) => _myBets = bets),
@@ -549,6 +589,7 @@ class AppState extends ChangeNotifier {
       );
       _rooms.insert(0, room);
       _selectedRoomId = room.id;
+      _syncSelectedRoomUrl();
       _questions = <PredictionMarket>[];
       _gameError = null;
       notifyListeners();
@@ -626,6 +667,7 @@ class AppState extends ChangeNotifier {
         _rooms[index] = updated;
       }
       _selectedRoomId = updated.id;
+      _syncSelectedRoomUrl();
       await Future.wait<void>(<Future<void>>[
         _loadQuestionsForSelectedRoom(),
         _loadLeaderboardForRoom(updated.id),
@@ -775,6 +817,7 @@ class AppState extends ChangeNotifier {
       _myBets.removeWhere((UserBet bet) => bet.roomId == roomId);
       if (_selectedRoomId == roomId) {
         _selectedRoomId = _rooms.isEmpty ? null : _rooms.first.id;
+        _syncSelectedRoomUrl();
       }
       await _loadRoomContext();
       _gameError = null;
@@ -935,5 +978,18 @@ class AppState extends ChangeNotifier {
       return entries.isEmpty ? 0 : entries.length;
     }
     return index + 1;
+  }
+
+  void _syncSelectedRoomUrl({bool allowExistingRoomOverride = true}) {
+    if (_selectedRoomId == null) {
+      return;
+    }
+    final String? linkedRoom = Uri.base.queryParameters['room'];
+    if (!allowExistingRoomOverride &&
+        linkedRoom != null &&
+        linkedRoom != _selectedRoomId) {
+      return;
+    }
+    replaceRoomInUrl(_selectedRoomId!);
   }
 }
