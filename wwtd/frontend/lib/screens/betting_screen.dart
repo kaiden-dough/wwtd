@@ -20,6 +20,7 @@ class BettingScreen extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 900;
         final Widget questionsColumn = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -43,6 +44,56 @@ class BettingScreen extends StatelessWidget {
             ),
           ],
         );
+
+        if (compact) {
+          return DefaultTabController(
+            length: 3,
+            initialIndex: 1,
+            child: Column(
+              children: <Widget>[
+                Container(
+                  margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const TabBar(
+                    tabs: <Widget>[
+                      Tab(icon: Icon(Icons.tune_outlined), text: 'Room'),
+                      Tab(icon: Icon(Icons.forum_outlined), text: 'Markets'),
+                      Tab(
+                        icon: Icon(Icons.leaderboard_outlined),
+                        text: 'Leaderboard',
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: _RoomSidebar(appState: appState, room: room),
+                      ),
+                      _MobileMarketsTab(
+                        room: room,
+                        displayMarkets: displayMarkets,
+                        onAddQuestion: () =>
+                            _showAddQuestionSheet(context, appState),
+                        buildQuestionChildren: _buildQuestionChildren,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: RoomLeaderboardSection(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
         if (room == null) {
           return Center(
@@ -270,10 +321,94 @@ class _RoomSidebar extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _shareRoomLink(context, room!),
+                  icon: const Icon(Icons.ios_share_outlined, size: 18),
+                  label: const Text('Share room link'),
+                ),
+              ),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+Future<void> _shareRoomLink(BuildContext context, GameRoom room) async {
+  final Uri current = Uri.base;
+  final Uri link = current.replace(
+    path: current.path.isEmpty ? '/' : current.path,
+    queryParameters: <String, String>{'room': room.id},
+    fragment: '',
+  );
+  try {
+    final bool copied = await copyTextToClipboard(link.toString());
+    if (!context.mounted) {
+      return;
+    }
+    if (copied) {
+      showAppSnackBar(
+        context,
+        const SnackBar(content: Text('Room link copied')),
+      );
+    } else {
+      await _showManualCopyCodeDialog(
+        context,
+        link.toString(),
+        label: 'room link',
+      );
+    }
+  } catch (_) {
+    if (!context.mounted) {
+      return;
+    }
+    await _showManualCopyCodeDialog(
+      context,
+      link.toString(),
+      label: 'room link',
+    );
+  }
+}
+
+class _MobileMarketsTab extends StatelessWidget {
+  const _MobileMarketsTab({
+    required this.room,
+    required this.displayMarkets,
+    required this.onAddQuestion,
+    required this.buildQuestionChildren,
+  });
+
+  final GameRoom? room;
+  final List<PredictionMarket> displayMarkets;
+  final VoidCallback onAddQuestion;
+  final List<Widget> Function(
+    BuildContext context,
+    GameRoom? room,
+    List<PredictionMarket> displayMarkets,
+  )
+  buildQuestionChildren;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (room != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            child: _MarketBar(onAddQuestion: onAddQuestion),
+          ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            children: buildQuestionChildren(context, room, displayMarkets),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -973,13 +1108,14 @@ Future<void> _showJoinCodeDialog(
 
 Future<void> _showManualCopyCodeDialog(
   BuildContext context,
-  String code,
-) async {
+  String value, {
+  String label = 'join code',
+}) async {
   await showDialog<void>(
     context: context,
     builder: (BuildContext dialogContext) {
       return AlertDialog(
-        title: const Text('Copy join code'),
+        title: Text('Copy $label'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -987,9 +1123,9 @@ Future<void> _showManualCopyCodeDialog(
             const Text('Clipboard access is blocked in this browser.'),
             const SizedBox(height: 12),
             SelectableText(
-              code,
+              value,
               style: Theme.of(dialogContext).textTheme.headlineSmall?.copyWith(
-                letterSpacing: 3,
+                letterSpacing: label == 'join code' ? 3 : 0,
                 fontWeight: FontWeight.w800,
                 color: const Color(0xFF1454A7),
               ),

@@ -8,20 +8,25 @@ import 'package:wwtd/models/room_discover.dart';
 import 'package:wwtd/providers/app_state.dart';
 import 'package:wwtd/utils/app_snack_bar.dart';
 
-Future<void> showJoinRoomSheet(BuildContext context) {
+Future<void> showJoinRoomSheet(
+  BuildContext context, {
+  RoomDiscover? initialRoom,
+}) {
   return showDialog<void>(
     context: context,
     builder: (BuildContext sheetContext) {
-      return const Dialog(
-        insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        child: _JoinRoomSheet(),
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: _JoinRoomSheet(initialRoom: initialRoom),
       );
     },
   );
 }
 
 class _JoinRoomSheet extends StatefulWidget {
-  const _JoinRoomSheet();
+  const _JoinRoomSheet({this.initialRoom});
+
+  final RoomDiscover? initialRoom;
 
   @override
   State<_JoinRoomSheet> createState() => _JoinRoomSheetState();
@@ -39,7 +44,12 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
   @override
   void initState() {
     super.initState();
-    _runSearch('');
+    if (widget.initialRoom != null) {
+      _selected = widget.initialRoom;
+      _results = <RoomDiscover>[widget.initialRoom!];
+    } else {
+      _runSearch('');
+    }
   }
 
   @override
@@ -126,33 +136,37 @@ class _JoinRoomSheetState extends State<_JoinRoomSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Search for a room, or pick one of the popular rooms below. You still need the join code from the moderator.',
+              widget.initialRoom == null
+                  ? 'Search for a room, or pick one of the popular rooms below. You still need the join code from the moderator.'
+                  : 'Enter the join code from the moderator to open this shared room.',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF607182)),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                labelText: 'Search rooms',
-                hintText: 'Name or moderator',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          _onSearchChanged('');
-                        },
-                      )
-                    : null,
+            if (widget.initialRoom == null) ...<Widget>[
+              TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  labelText: 'Search rooms',
+                  hintText: 'Name or moderator',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: _onSearchChanged,
               ),
-              onChanged: _onSearchChanged,
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+            ],
             Expanded(child: _buildResults()),
             const SizedBox(height: 12),
             TextField(

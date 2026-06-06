@@ -249,6 +249,19 @@ class ApiClient {
         .toList();
   }
 
+  Future<RoomDiscover> fetchRoomPreview(String roomId) async {
+    final http.Response response = await _client.get(
+      _uri('/api/rooms/$roomId/preview'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return RoomDiscover.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<GameRoom> joinRoom({required String joinCode, String? roomId}) async {
     final Map<String, String> body = <String, String>{
       'join_code': joinCode.trim().toUpperCase(),

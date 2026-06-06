@@ -4,6 +4,8 @@ import 'package:wwtd/providers/app_state.dart';
 import 'package:wwtd/screens/account_screen.dart';
 import 'package:wwtd/screens/betting_screen.dart';
 import 'package:wwtd/screens/login_screen.dart';
+import 'package:wwtd/utils/room_url.dart';
+import 'package:wwtd/widgets/join_room_sheet.dart';
 
 void main() {
   runApp(
@@ -63,12 +65,21 @@ class AppGate extends StatelessWidget {
   }
 }
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  String? _handledSharedRoomId;
+  bool _handlingSharedRoom = false;
 
   @override
   Widget build(BuildContext context) {
     final AppState appState = context.watch<AppState>();
+    _handleSharedRoomLink(context, appState);
 
     return Scaffold(
       appBar: AppBar(
@@ -90,5 +101,40 @@ class AppShell extends StatelessWidget {
       ),
       body: const BettingScreen(),
     );
+  }
+
+  void _handleSharedRoomLink(BuildContext context, AppState appState) {
+    final String? roomId = Uri.base.queryParameters['room']?.trim();
+    if (roomId == null ||
+        roomId.isEmpty ||
+        roomId == _handledSharedRoomId ||
+        _handlingSharedRoom ||
+        !appState.sessionReady ||
+        !appState.isLoggedIn) {
+      return;
+    }
+    _handlingSharedRoom = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !context.mounted) {
+        return;
+      }
+      final joinedRoom = appState.roomById(roomId);
+      if (joinedRoom != null) {
+        await appState.selectRoom(roomId);
+        replaceRoomInUrl(roomId);
+        _handledSharedRoomId = roomId;
+        _handlingSharedRoom = false;
+        return;
+      }
+      final preview = await appState.fetchRoomPreview(roomId);
+      if (!mounted || !context.mounted) {
+        return;
+      }
+      _handledSharedRoomId = roomId;
+      _handlingSharedRoom = false;
+      if (preview != null) {
+        await showJoinRoomSheet(context, initialRoom: preview);
+      }
+    });
   }
 }
