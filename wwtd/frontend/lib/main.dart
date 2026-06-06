@@ -54,7 +54,7 @@ class AppGate extends StatelessWidget {
 
     if (!appState.sessionReady ||
         (appState.authLoading && !appState.isLoggedIn)) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const _LoadingScreen();
     }
 
     if (!appState.isLoggedIn) {
@@ -62,6 +62,70 @@ class AppGate extends StatelessWidget {
     }
 
     return const AppShell();
+  }
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.network(
+                  'icons/Icon-192.png',
+                  width: 132,
+                  height: 132,
+                  fit: BoxFit.contain,
+                  errorBuilder:
+                      (
+                        BuildContext context,
+                        Object error,
+                        StackTrace? stackTrace,
+                      ) {
+                        return Container(
+                          alignment: Alignment.center,
+                          width: 132,
+                          height: 132,
+                          color: const Color(0xFF2F4D7E),
+                          child: const Text(
+                            'WWTD',
+                            style: TextStyle(
+                              color: Color(0xFFF4F0E4),
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        );
+                      },
+                ),
+              ),
+              const SizedBox(height: 24),
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0.18, end: 0.86),
+                duration: const Duration(milliseconds: 1100),
+                curve: Curves.easeInOut,
+                builder: (BuildContext context, double value, Widget? child) {
+                  return LinearProgressIndicator(
+                    value: value,
+                    minHeight: 8,
+                    borderRadius: BorderRadius.circular(999),
+                    backgroundColor: const Color(0xFFE2E8F0),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

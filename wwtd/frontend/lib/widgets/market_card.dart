@@ -654,7 +654,7 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
     final List<_TrendPoint> points = <_TrendPoint>[];
     double yesTotal = 0;
     double noTotal = 0;
-    final double historyUnits = math.max(10, history.length).toDouble();
+    final double pickCount = math.max(1, history.length).toDouble();
     for (int i = 0; i < history.length; i++) {
       final PickHistoryEntry pick = history[i];
       if (pick.side.toLowerCase() == 'yes') {
@@ -667,7 +667,7 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
         _TrendPoint(
           timestamp: pick.createdAt,
           yesPercent: total == 0 ? 50 : (yesTotal / total) * 100,
-          pickUnit: ((i + 1) / historyUnits) * 5,
+          pickUnit: ((i + 1) / pickCount) * _chartUnits(),
         ),
       );
     }
@@ -687,12 +687,6 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
         yesPercent: latest,
         pickUnit: points.last.pickUnit,
       );
-      final DateTime now = DateTime.now();
-      if (now.isAfter(points.last.timestamp)) {
-        points.add(
-          _TrendPoint(timestamp: now, yesPercent: latest, pickUnit: 10),
-        );
-      }
     }
     return points;
   }
@@ -718,7 +712,7 @@ class _OddsTrendChartState extends State<_OddsTrendChart> {
     final int hour = eastern.hour % 12 == 0 ? 12 : eastern.hour % 12;
     final String minute = eastern.minute.toString().padLeft(2, '0');
     final String suffix = eastern.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix Eastern';
+    return '${eastern.month}/${eastern.day} $hour:$minute $suffix Eastern';
   }
 }
 
