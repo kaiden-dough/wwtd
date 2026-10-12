@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.db import Base
-from app.models import Profile
+from app.models import Profile, RoomMember, Bet
 from app.config import settings
 from app.supabase_auth import google_profile, link_google
 
@@ -59,12 +59,29 @@ class GoogleAuthTests(unittest.TestCase):
     def test_link_preserves_profile_and_balance(self):
         profile = Profile(id="legacy", username="player", balance_points=42)
         self.db.add(profile)
+        self.db.add(RoomMember(room_id='existing-room', user_id='legacy', balance_points=321))
+        self.db.add(Bet(question_id='existing-question', user_id='legacy', side='yes', amount=7))
         self.db.commit()
         with patch("app.supabase_auth.verify_google_session", return_value=self.user):
             linked = link_google("google-token", profile, self.db)
         self.assertEqual(linked.id, "legacy")
         self.assertEqual(self.verify().id, "legacy")
         self.assertEqual(self.verify().balance_points, 42)
+        self.assertEqual(self.db.query(RoomMember).one().user_id, 'legacy')
+        self.assertEqual(self.db.query(RoomMember).one().balance_points, 321)
+        self.assertEqual(self.db.query(Bet).one().user_id, 'legacy')
+
+    def test_cannot_remap_google_profile_with_game_history(self):
+        existing = self.verify()
+        self.db.add(Bet(question_id='existing-question', user_id=existing.id, side='yes', amount=7))
+        profile = Profile(id='legacy', username='player', balance_points=42)
+        self.db.add(profile)
+        self.db.commit()
+        with patch('app.supabase_auth.verify_google_session', return_value=self.user):
+            with self.assertRaises(HTTPException) as caught:
+                link_google('google-token', profile, self.db)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(self.verify().id, existing.id)
 
     def test_cannot_link_another_players_google_account(self):
         existing = self.verify()

@@ -2,23 +2,28 @@
 
 ## Current rollout (October 12, 2026)
 
-- Blue frontend: https://wwtd.vercel.app (production remains on main).
+- Production frontend: https://wwtd.vercel.app (Google-first release).
+- Blue rollback deployment: `9paWAmpCz4R87ccNGPvTtsxdMqsi` (commit `0c8686f`).
 - Blue API: https://wwtd-api.onrender.com.
 - Green frontend: https://wwtd-git-codex-wwtd-google-green-kaiden-doughs-projects.vercel.app/.
 - Green API: https://wwtd-api-green.onrender.com.
 - Green source branch: `codex/wwtd-google-green`.
 - Render green service: `srv-db6jujdg1s2s739krrbg` in My Workspace.
 
-The branch-specific Vercel build selects Google auth and the green API. The
-Supabase redirect allowlist includes the exact green frontend root URL.
-The green API requires DATABASE_URL and JWT_SECRET to be copied from blue via
-Render's environment dashboard. Its start command refuses to run without
-both values, preventing an accidental temporary SQLite deployment.
+Vercel production branch tracking is `codex/wwtd-google-green`, matching the
+green Render service. Production deployments are staged for manual promotion.
+The branch-specific build selects `AUTH_MODE=hybrid` and the green API; new
+accounts use Google, while existing players can choose "Migrate an existing
+account", log in with their password, and use Account > Link Google account.
+Linking preserves profile IDs and all associated game records. An unused,
+automatically created Google profile can be remapped after proving both
+credentials; a Google profile with game history cannot be silently merged.
 
-After adding the values, save/redeploy green and verify `/health` reports
-`color=green`, `auth_mode=google`; then complete Google login, reload, logout,
-and confirm account data. Existing players should link their password account
-in a hybrid build before Google-only cutover. Do not promote before this test.
+The Supabase site URL is https://wwtd.vercel.app/ and the redirect allowlist
+contains both the production and exact green branch URLs. Green has the shared
+database and JWT secret configured. Its start command refuses to run without
+both values. Verify `/health` reports `color=green`, `auth_mode=hybrid`.
+Retain hybrid mode until existing players have linked their own Google accounts.
 
 To swap frontend traffic, promote the tested green Vercel deployment. The
 promoted artifact already points to green API. Restore the prior production
@@ -124,8 +129,8 @@ with the same database and JWT secret, `AUTH_MODE=hybrid`,
 `DEPLOYMENT_COLOR=green` and both Supabase settings. Test through a Vercel preview.
 A stable gateway/domain must route to either Render service for a backend traffic
 switch; the Docker switch script manages only its local Nginx gateway. Disable
-auto-deploy on the active service during rollout. No production switch has been
-performed by these repository changes.
+auto-deploy on the active service during rollout. The hosted frontend promotion
+switches between API URLs; the local Nginx script is not used on Render.
 
 Only additive database changes are compatible with two live releases. Existing
 startup migrations predate this change; run and review them on a database copy,
