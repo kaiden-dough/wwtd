@@ -302,7 +302,9 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                             ),
                           ],
-                          if (AuthConfig.mode == 'google' &&
+                          if ((AuthConfig.mode == 'google' ||
+                                  (AuthConfig.mode == 'hybrid' &&
+                                      !_showExistingLogin)) &&
                               appState.authError != null)
                             Text(appState.authError!),
                         ],
