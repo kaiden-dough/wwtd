@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:wwtd/config/auth_config.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -152,126 +153,143 @@ class _LoginScreenState extends State<LoginScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
-                          TabBar(
-                            controller: _tabController,
-                            onTap: (_) {
-                              appState.clearAuthError();
-                              setState(() {});
-                              if (_tabController.index == 1) {
-                                _checkUsernameAvailability();
-                              }
-                            },
-                            tabs: const <Tab>[
-                              Tab(text: 'Log in'),
-                              Tab(text: 'Sign up'),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          TextField(
-                            controller: _usernameController,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.next,
-                            decoration: InputDecoration(
-                              labelText: 'Username',
-                              hintText: 'letters, numbers, underscore',
-                              border: const OutlineInputBorder(),
-                              suffixIcon: isRegister && _checkingUsername
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                          if (AuthConfig.googleEnabled) ...<Widget>[
+                            FilledButton.icon(
+                              onPressed: appState.authLoading
+                                  ? null
+                                  : appState.signInWithGoogle,
+                              icon: const Icon(Icons.login),
+                              label: const Text("Continue with Google"),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          if (AuthConfig.mode != "google") ...<Widget>[
+                            TabBar(
+                              controller: _tabController,
+                              onTap: (_) {
+                                appState.clearAuthError();
+                                setState(() {});
+                                if (_tabController.index == 1) {
+                                  _checkUsernameAvailability();
+                                }
+                              },
+                              tabs: const <Tab>[
+                                Tab(text: 'Log in'),
+                                Tab(text: 'Sign up'),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            TextField(
+                              controller: _usernameController,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: 'Username',
+                                hintText: 'letters, numbers, underscore',
+                                border: const OutlineInputBorder(),
+                                suffixIcon: isRegister && _checkingUsername
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
                                         ),
+                                      )
+                                    : isRegister && _usernameAvailable == true
+                                    ? const Icon(
+                                        Icons.check_circle,
+                                        color: Color(0xFF2C9B67),
+                                      )
+                                    : isRegister && _usernameAvailable == false
+                                    ? const Icon(
+                                        Icons.cancel,
+                                        color: Color(0xFFC62828),
+                                      )
+                                    : null,
+                                errorText: isRegister
+                                    ? _usernameCheckMessage
+                                    : null,
+                              ),
+                              onChanged: (_) {
+                                appState.clearAuthError();
+                                if (isRegister) {
+                                  setState(() {
+                                    _usernameAvailable = null;
+                                    _usernameCheckMessage = null;
+                                  });
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _passwordController,
+                              obscureText: true,
+                              autocorrect: false,
+                              textInputAction: TextInputAction.done,
+                              decoration: InputDecoration(
+                                labelText: 'Password',
+                                hintText: isRegister
+                                    ? 'at least 8 characters'
+                                    : 'enter password',
+                                border: const OutlineInputBorder(),
+                              ),
+                              onChanged: (_) {
+                                appState.clearAuthError();
+                                if (isRegister) {
+                                  setState(() {});
+                                }
+                              },
+                              onSubmitted: (_) {
+                                if (!appState.authLoading) {
+                                  if (isRegister && canRegister) {
+                                    _submitRegister(appState);
+                                  } else if (!isRegister) {
+                                    _submitLogin(appState);
+                                  }
+                                }
+                              },
+                            ),
+                            if (appState.authError != null) ...<Widget>[
+                              const SizedBox(height: 12),
+                              Text(
+                                appState.authError!,
+                                style: const TextStyle(
+                                  color: Color(0xFFC62828),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              onPressed:
+                                  appState.authLoading ||
+                                      (isRegister && !canRegister)
+                                  ? null
+                                  : () {
+                                      if (isRegister) {
+                                        _submitRegister(appState);
+                                      } else {
+                                        _submitLogin(appState);
+                                      }
+                                    },
+                              child: appState.authLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
                                     )
-                                  : isRegister && _usernameAvailable == true
-                                  ? const Icon(
-                                      Icons.check_circle,
-                                      color: Color(0xFF2C9B67),
-                                    )
-                                  : isRegister && _usernameAvailable == false
-                                  ? const Icon(
-                                      Icons.cancel,
-                                      color: Color(0xFFC62828),
-                                    )
-                                  : null,
-                              errorText: isRegister
-                                  ? _usernameCheckMessage
-                                  : null,
-                            ),
-                            onChanged: (_) {
-                              appState.clearAuthError();
-                              if (isRegister) {
-                                setState(() {
-                                  _usernameAvailable = null;
-                                  _usernameCheckMessage = null;
-                                });
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            autocorrect: false,
-                            textInputAction: TextInputAction.done,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              hintText: isRegister
-                                  ? 'at least 8 characters'
-                                  : 'enter password',
-                              border: const OutlineInputBorder(),
-                            ),
-                            onChanged: (_) {
-                              appState.clearAuthError();
-                              if (isRegister) {
-                                setState(() {});
-                              }
-                            },
-                            onSubmitted: (_) {
-                              if (!appState.authLoading) {
-                                if (isRegister && canRegister) {
-                                  _submitRegister(appState);
-                                } else if (!isRegister) {
-                                  _submitLogin(appState);
-                                }
-                              }
-                            },
-                          ),
-                          if (appState.authError != null) ...<Widget>[
-                            const SizedBox(height: 12),
-                            Text(
-                              appState.authError!,
-                              style: const TextStyle(color: Color(0xFFC62828)),
+                                  : Text(
+                                      isRegister ? 'Create account' : 'Log in',
+                                    ),
                             ),
                           ],
-                          const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed:
-                                appState.authLoading ||
-                                    (isRegister && !canRegister)
-                                ? null
-                                : () {
-                                    if (isRegister) {
-                                      _submitRegister(appState);
-                                    } else {
-                                      _submitLogin(appState);
-                                    }
-                                  },
-                            child: appState.authLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : Text(
-                                    isRegister ? 'Create account' : 'Log in',
-                                  ),
-                          ),
+                          if (AuthConfig.mode == 'google' &&
+                              appState.authError != null)
+                            Text(appState.authError!),
                         ],
                       ),
                     ),

@@ -137,3 +137,9 @@ class Bet(Base):
 
     question: Mapped[Question] = relationship(back_populates="bets")
     user: Mapped[Profile] = relationship(back_populates="bets")
+
+
+class GoogleIdentity(Base):
+    __tablename__ = "google_identities"
+    supabase_user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    profile_id: Mapped[str] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), unique=True, nullable=False)

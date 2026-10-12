@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -7,6 +8,11 @@ _DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "wwtd.db"
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    auth_mode: Literal["password", "hybrid", "google"] = "password"
+    deployment_color: str = "local"
+    supabase_url: str = ""
+    supabase_publishable_key: str = ""
 
     starting_balance_points: float = 500.0
     jwt_secret: str = "dev-change-me"

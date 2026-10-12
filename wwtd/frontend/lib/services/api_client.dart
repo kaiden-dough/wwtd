@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wwtd/config/auth_config.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -38,6 +40,12 @@ class ApiClient {
     }
     if (_token != null && _token!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_token';
+    }
+    if (AuthConfig.googleEnabled) {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
     }
     return headers;
   }
@@ -105,6 +113,21 @@ class ApiClient {
         jsonDecode(response.body) as Map<String, dynamic>;
     _token = body['access_token'] as String;
     return UserProfile.fromJson(body['profile'] as Map<String, dynamic>);
+  }
+
+  Future<UserProfile> linkGoogle(String googleToken) async {
+    final response = await _client.post(
+      _uri('/api/auth/link-google'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode({'access_token': googleToken}),
+    );
+    if (response.statusCode != 200) throw _errorFromResponse(response);
+    return UserProfile.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<UserProfile> fetchMe() async {

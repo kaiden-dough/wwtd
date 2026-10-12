@@ -48,7 +48,10 @@ app.include_router(leaderboard.router, prefix="/api")
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return {"status": "ok", "color": settings.deployment_color, "auth_mode": settings.auth_mode}
 
 
 if __name__ == "__main__":

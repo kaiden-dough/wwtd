@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wwtd/config/auth_config.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/providers/app_state.dart';
@@ -7,7 +9,14 @@ import 'package:wwtd/screens/login_screen.dart';
 import 'package:wwtd/utils/room_url.dart';
 import 'package:wwtd/widgets/join_room_sheet.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (AuthConfig.googleEnabled) {
+    await Supabase.initialize(
+      url: AuthConfig.url,
+      publishableKey: AuthConfig.key,
+    );
+  }
   runApp(
     ChangeNotifierProvider<AppState>(
       create: (_) => AppState(),

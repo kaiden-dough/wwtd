@@ -125,3 +125,5 @@ app.*.symbols
 
 # Obsolete root-level backend (API is under wwtd/backend). Safe to delete that folder locally.
 /backend/
+# Commit application dependency versions for reproducible auth builds.
+!wwtd/frontend/pubspec.lock

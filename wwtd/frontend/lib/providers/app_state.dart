@@ -1,3 +1,7 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wwtd/config/auth_config.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +24,56 @@ class AppState extends ChangeNotifier {
   static const String _tokenKey = 'auth_token';
 
   final ApiClient _api;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> signInWithGoogle({bool linkAccount = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool("link_google_pending", linkAccount);
+      if (!kIsWeb && AuthConfig.redirect.isEmpty) {
+        throw Exception("Mobile OAuth redirect is not configured");
+      }
+      final started = await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb
+            ? Uri.base.replace(fragment: "").toString()
+            : AuthConfig.redirect,
+      );
+      if (!started) throw Exception("Could not open Google sign-in");
+    } catch (e) {
+      _authError = "$e";
+      notifyListeners();
+    }
+  }
+
+  Future<void> _syncGoogleSession() async {
+    if (Supabase.instance.client.auth.currentSession == null) {
+      _api.setToken(null);
+      _user = null;
+      _clearGameData();
+      notifyListeners();
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getBool('link_google_pending') ?? false;
+    if (pending) {
+      _api.setToken(prefs.getString(_tokenKey));
+      await _authenticate(
+        () => _api.linkGoogle(
+          Supabase.instance.client.auth.currentSession!.accessToken,
+        ),
+      );
+      if (_authError == null) await prefs.remove('link_google_pending');
+    } else {
+      await _authenticate(() => _api.fetchMe());
+    }
+  }
 
   String? _selectedRoomId;
   static const double _defaultPickWeight = 1;
@@ -116,6 +170,25 @@ class AppState extends ChangeNotifier {
 
   Future<void> _init() async {
     try {
+      if (AuthConfig.googleEnabled) {
+        _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+            .listen(
+              (event) {
+                if (event.event == AuthChangeEvent.signedIn ||
+                    event.event == AuthChangeEvent.signedOut) {
+                  unawaited(_syncGoogleSession());
+                }
+              },
+              onError: (Object error) {
+                _authError = "$error";
+                notifyListeners();
+              },
+            );
+        if (Supabase.instance.client.auth.currentSession != null) {
+          await _syncGoogleSession();
+          return;
+        }
+      }
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? token = prefs.getString(_tokenKey);
       if (token != null && token.isNotEmpty) {
@@ -368,6 +441,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    if (AuthConfig.googleEnabled) {
+      await Supabase.instance.client.auth.signOut(scope: SignOutScope.local);
+    }
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     _api.setToken(null);

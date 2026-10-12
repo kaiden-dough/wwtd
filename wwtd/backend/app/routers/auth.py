@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.auth import security
+from fastapi.security import HTTPAuthorizationCredentials
 from app.db import get_db
 from app.models import Profile
 from app.passwords import hash_password, verify_password
@@ -90,6 +92,7 @@ def check_username(username: str, db: Annotated[Session, Depends(get_db)]) -> Us
 
 @router.post("/register", response_model=AuthTokenOut, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+    _require_password_auth()
     username = _normalize_username(body.username)
     _validate_username(username)
 
@@ -112,9 +115,12 @@ def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> Aut
 
 @router.post("/login", response_model=AuthTokenOut)
 def login(body: LoginBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
+    _require_password_auth()
     username = _normalize_username(body.username)
+    if settings.deployment_color != "local" and username in {"admin", "testuser"}:
+        raise HTTPException(403, "Temporary accounts are disabled")
     temp_display_name = _temp_display_name(username)
-    if temp_display_name is not None and body.password == "dingus":
+    if settings.deployment_color == "local" and temp_display_name is not None and body.password == "dingus":
         return _temp_login(db, username=username, display_name=temp_display_name)
 
     profile = db.scalar(select(Profile).where(Profile.username == username))
@@ -142,6 +148,9 @@ def temp_user_login(body: TempLoginBody, db: Annotated[Session, Depends(get_db)]
 
 
 def _validate_temp_password(password: str) -> None:
+    _require_password_auth()
+    if settings.deployment_color != "local":
+        raise HTTPException(403, "Temporary accounts are disabled")
     if password != "dingus":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid temporary account password")
 
@@ -172,3 +181,37 @@ def _temp_login(db: Session, *, username: str, display_name: str) -> AuthTokenOu
         db.commit()
         db.refresh(profile)
     return _issue_token(profile)
+
+
+def _require_password_auth():
+    if settings.auth_mode == "google":
+        raise HTTPException(403, "Please sign in with Google")
+
+
+@router.get("/config")
+def auth_config():
+    return {"auth_mode": settings.auth_mode, "color": settings.deployment_color}
+
+
+class LinkGoogleBody(BaseModel):
+    access_token: str = Field(min_length=1, max_length=16384)
+
+
+@router.post("/link-google", response_model=ProfileOut)
+def link_google_account(body: LinkGoogleBody,
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    db: Annotated[Session, Depends(get_db)]):
+    from app.tokens import decode_access_token
+    from app.supabase_auth import link_google
+    if settings.auth_mode not in {"hybrid", "google"}:
+        raise HTTPException(403, "Google auth is disabled")
+    if creds is None:
+        raise HTTPException(401, "Sign in to your existing account first")
+    try:
+        payload = decode_access_token(creds.credentials)
+    except ValueError as exc:
+        raise HTTPException(401, "Sign in to your existing account first") from exc
+    profile = db.get(Profile, payload.get("sub"))
+    if profile is None:
+        raise HTTPException(401, "Account not found")
+    return _profile_out(link_google(body.access_token, profile, db))
