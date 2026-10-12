@@ -1,5 +1,31 @@
 # Google OAuth and blue-green deployment
 
+## Current rollout (October 12, 2026)
+
+- Blue frontend: https://wwtd.vercel.app (production remains on main).
+- Blue API: https://wwtd-api.onrender.com.
+- Green frontend: https://wwtd-git-codex-wwtd-google-green-kaiden-doughs-projects.vercel.app/.
+- Green API: https://wwtd-api-green.onrender.com.
+- Green source branch: `codex/wwtd-google-green`.
+- Render green service: `srv-db6jujdg1s2s739krrbg` in My Workspace.
+
+The branch-specific Vercel build selects Google auth and the green API. The
+Supabase redirect allowlist includes the exact green frontend root URL.
+The green API requires DATABASE_URL and JWT_SECRET to be copied from blue via
+Render's environment dashboard. Its start command refuses to run without
+both values, preventing an accidental temporary SQLite deployment.
+
+After adding the values, save/redeploy green and verify `/health` reports
+`color=green`, `auth_mode=google`; then complete Google login, reload, logout,
+and confirm account data. Existing players should link their password account
+in a hybrid build before Google-only cutover. Do not promote before this test.
+
+To swap frontend traffic, promote the tested green Vercel deployment. The
+promoted artifact already points to green API. Restore the prior production
+Vercel deployment to roll back; it points to blue API. Keep both APIs running
+through the observation period. No DNS changes or database reset are required.
+
+
 ## Two frontend releases
 
 Leave the deployed blue frontend and its backend unchanged. Build a separate

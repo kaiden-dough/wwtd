@@ -127,3 +127,6 @@ app.*.symbols
 /backend/
 # Commit application dependency versions for reproducible auth builds.
 !wwtd/frontend/pubspec.lock
+
+# Local rollout verification screenshots
+/green-preview.png
