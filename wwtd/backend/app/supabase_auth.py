@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.config import settings
-from app.models import Profile, GoogleIdentity
+from app.models import Profile, GoogleIdentity, Room, RoomMember, Question, Bet
 
 
 def verify_google_session(token):
@@ -68,11 +68,22 @@ def link_google(token, profile, db):
     identity = db.get(GoogleIdentity, user["id"])
     if identity is not None:
         if identity.profile_id != profile.id:
-            raise HTTPException(409, "Google account already belongs to another player")
-        return profile
+            # Both credentials are proven. An untouched auto-created Google
+            # profile can be remapped without moving or deleting any game data.
+            previous = db.get(Profile, identity.profile_id)
+            occupied = any(db.scalar(select(model).where(column == identity.profile_id).limit(1))
+                for model, column in [(Room, Room.created_by), (RoomMember, RoomMember.user_id),
+                    (Question, Question.created_by), (Bet, Bet.user_id)])
+            if previous is None or previous.username or previous.password_hash or previous.balance_points != 0 or occupied:
+                raise HTTPException(409, "Google account already belongs to another player")
+        else:
+            return profile
     if db.scalar(select(GoogleIdentity).where(GoogleIdentity.profile_id == profile.id)):
         raise HTTPException(409, "Player already has a linked Google account")
-    db.add(GoogleIdentity(supabase_user_id=user["id"], profile_id=profile.id))
+    if identity is None:
+        db.add(GoogleIdentity(supabase_user_id=user["id"], profile_id=profile.id))
+    else:
+        identity.profile_id = profile.id
     try:
         db.commit()
     except IntegrityError as exc:

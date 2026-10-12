@@ -67,7 +67,9 @@ class GoogleAuthTests(unittest.TestCase):
         self.assertEqual(self.verify().balance_points, 42)
 
     def test_cannot_link_another_players_google_account(self):
-        self.verify()
+        existing = self.verify()
+        existing.username = 'established'
+        self.db.commit()
         profile = Profile(id="legacy", username="other", balance_points=42)
         self.db.add(profile)
         self.db.commit()
@@ -75,6 +77,17 @@ class GoogleAuthTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 link_google("google-token", profile, self.db)
         self.assertEqual(caught.exception.status_code, 409)
+
+    def test_migrates_after_google_created_an_unused_profile(self):
+        unused = self.verify()
+        profile = Profile(id='legacy', username='player', balance_points=42)
+        self.db.add(profile)
+        self.db.commit()
+        with patch('app.supabase_auth.verify_google_session', return_value=self.user):
+            link_google('google-token', profile, self.db)
+        self.assertEqual(self.verify().id, 'legacy')
+        self.assertEqual(self.verify().balance_points, 42)
+        self.assertIsNotNone(self.db.get(Profile, unused.id))
 
     def test_invalid_session(self):
         with patch("app.supabase_auth.urlopen", side_effect=HTTPError("url", 401, "expired", {}, None)):

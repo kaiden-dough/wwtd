@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _checkingUsername = false;
   bool? _usernameAvailable;
   String? _usernameCheckMessage;
+  bool _showExistingLogin = false;
 
   @override
   void initState() {
@@ -163,21 +164,35 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             const SizedBox(height: 16),
                           ],
-                          if (AuthConfig.mode != "google") ...<Widget>[
-                            TabBar(
-                              controller: _tabController,
-                              onTap: (_) {
-                                appState.clearAuthError();
-                                setState(() {});
-                                if (_tabController.index == 1) {
-                                  _checkUsernameAvailability();
-                                }
-                              },
-                              tabs: const <Tab>[
-                                Tab(text: 'Log in'),
-                                Tab(text: 'Sign up'),
-                              ],
+                          if (AuthConfig.mode == 'hybrid')
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _showExistingLogin = !_showExistingLogin;
+                              }),
+                              child: const Text('Migrate an existing account'),
                             ),
+                          if (AuthConfig.mode == 'password' ||
+                              (AuthConfig.mode == 'hybrid' &&
+                                  _showExistingLogin)) ...<Widget>[
+                            if (AuthConfig.mode == 'hybrid')
+                              const Text(
+                                'Log in with your existing username, then open Account and link Google to keep your rooms, picks, and balances.',
+                              ),
+                            if (AuthConfig.mode == 'password')
+                              TabBar(
+                                controller: _tabController,
+                                onTap: (_) {
+                                  appState.clearAuthError();
+                                  setState(() {});
+                                  if (_tabController.index == 1) {
+                                    _checkUsernameAvailability();
+                                  }
+                                },
+                                tabs: const <Tab>[
+                                  Tab(text: 'Log in'),
+                                  Tab(text: 'Sign up'),
+                                ],
+                              ),
                             const SizedBox(height: 20),
                             TextField(
                               controller: _usernameController,

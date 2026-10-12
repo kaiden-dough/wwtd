@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The isolated green branch always builds Google auth against the green API.
-# Production/main keeps the existing password defaults.
+# The release branch builds Google-first auth with existing-account migration.
 if [ "${VERCEL_GIT_COMMIT_REF:-}" = "codex/wwtd-google-green" ]; then
   export API_BASE_URL="https://wwtd-api-green.onrender.com"
-  export AUTH_MODE="google"
+  export AUTH_MODE="hybrid"
   export SUPABASE_URL="https://axffuusaaathvketrgzf.supabase.co"
   export SUPABASE_PUBLISHABLE_KEY="sb_publishable_KSoPSZcBjEfpItxR0QLHeQ_huLCfp-Q"
 fi

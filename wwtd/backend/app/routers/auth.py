@@ -93,6 +93,8 @@ def check_username(username: str, db: Annotated[Session, Depends(get_db)]) -> Us
 @router.post("/register", response_model=AuthTokenOut, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterBody, db: Annotated[Session, Depends(get_db)]) -> AuthTokenOut:
     _require_password_auth()
+    if settings.auth_mode == 'hybrid':
+        raise HTTPException(403, 'New accounts must sign in with Google')
     username = _normalize_username(body.username)
     _validate_username(username)
 
