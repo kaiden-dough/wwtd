@@ -49,7 +49,7 @@ class _AccountSheetContentState extends State<AccountSheetContent> {
         ),
         const SizedBox(height: 16),
         _LoggedInSection(user: appState.user!, onLogout: appState.logout),
-        if (AuthConfig.googleEnabled)
+        if (AuthConfig.googleEnabled && !appState.isGoogleSignedIn)
           OutlinedButton(
             onPressed: () => appState.signInWithGoogle(linkAccount: true),
             child: const Text('Link Google account'),

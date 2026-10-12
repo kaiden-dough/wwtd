@@ -90,6 +90,9 @@ class AppState extends ChangeNotifier {
   String? _gameError;
   UserProfile? get user => _user;
   bool get isLoggedIn => _user != null;
+  bool get isGoogleSignedIn =>
+      AuthConfig.googleEnabled &&
+      Supabase.instance.client.auth.currentSession != null;
   bool get sessionReady => _sessionReady;
   bool get authLoading => _authLoading == true;
   bool get gameLoading => _gameLoading == true;
@@ -446,6 +449,7 @@ class AppState extends ChangeNotifier {
     }
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove('link_google_pending');
     _api.setToken(null);
     _user = null;
     _authError = null;
