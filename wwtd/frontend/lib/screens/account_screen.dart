@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:wwtd/config/auth_config.dart';
 import 'package:provider/provider.dart';
 import 'package:wwtd/models/user_bet.dart';
 import 'package:wwtd/models/user_profile.dart';
@@ -49,11 +48,6 @@ class _AccountSheetContentState extends State<AccountSheetContent> {
         ),
         const SizedBox(height: 16),
         _LoggedInSection(user: appState.user!, onLogout: appState.logout),
-        if (AuthConfig.googleEnabled && !appState.isGoogleSignedIn)
-          OutlinedButton(
-            onPressed: () => appState.signInWithGoogle(linkAccount: true),
-            child: const Text('Link Google account'),
-          ),
         if (appState.authError != null) Text(appState.authError!),
         const SizedBox(height: 20),
         _BetHistorySection(

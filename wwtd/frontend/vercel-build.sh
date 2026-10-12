@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The release branch builds Google-first auth with existing-account migration.
+# The release branch uses Google OAuth exclusively.
 if [ "${VERCEL_GIT_COMMIT_REF:-}" = "codex/wwtd-google-green" ]; then
   export API_BASE_URL="https://wwtd-api-green.onrender.com"
-  export AUTH_MODE="hybrid"
+  export AUTH_MODE="google"
   export SUPABASE_URL="https://axffuusaaathvketrgzf.supabase.co"
   export SUPABASE_PUBLISHABLE_KEY="sb_publishable_KSoPSZcBjEfpItxR0QLHeQ_huLCfp-Q"
 fi

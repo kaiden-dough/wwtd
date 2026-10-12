@@ -205,8 +205,8 @@ def link_google_account(body: LinkGoogleBody,
     db: Annotated[Session, Depends(get_db)]):
     from app.tokens import decode_access_token
     from app.supabase_auth import link_google
-    if settings.auth_mode not in {"hybrid", "google"}:
-        raise HTTPException(403, "Google auth is disabled")
+    if settings.auth_mode != "hybrid":
+        raise HTTPException(403, "Account migration is disabled")
     if creds is None:
         raise HTTPException(401, "Sign in to your existing account first")
     try:

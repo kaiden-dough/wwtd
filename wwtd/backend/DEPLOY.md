@@ -2,7 +2,7 @@
 
 ## Current rollout (October 12, 2026)
 
-- Production frontend: https://wwtd.vercel.app (Google-first release).
+- Production frontend: https://wwtd.vercel.app (Google-only release).
 - Blue rollback deployment: `9paWAmpCz4R87ccNGPvTtsxdMqsi` (commit `0c8686f`).
 - Blue API: https://wwtd-api.onrender.com.
 - Green frontend: https://wwtd-git-codex-wwtd-google-green-kaiden-doughs-projects.vercel.app/.
@@ -12,18 +12,14 @@
 
 Vercel production branch tracking is `codex/wwtd-google-green`, matching the
 green Render service. Production deployments are staged for manual promotion.
-The branch-specific build selects `AUTH_MODE=hybrid` and the green API; new
-accounts use Google, while existing players can choose "Migrate an existing
-account", log in with their password, and use Account > Link Google account.
-Linking preserves profile IDs and all associated game records. An unused,
-automatically created Google profile can be remapped after proving both
-credentials; a Google profile with game history cannot be silently merged.
+The branch-specific build selects `AUTH_MODE=google` and the green API.
+Password login, password registration, and account migration are disabled.
+Existing Google identity mappings remain intact.
 
 The Supabase site URL is https://wwtd.vercel.app/ and the redirect allowlist
 contains both the production and exact green branch URLs. Green has the shared
 database and JWT secret configured. Its start command refuses to run without
-both values. Verify `/health` reports `color=green`, `auth_mode=hybrid`.
-Retain hybrid mode until existing players have linked their own Google accounts.
+both values. Verify `/health` reports `color=green`, `auth_mode=google`.
 
 To swap frontend traffic, promote the tested green Vercel deployment. The
 promoted artifact already points to green API. Restore the prior production

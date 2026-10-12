@@ -21,7 +21,6 @@ class _LoginScreenState extends State<LoginScreen>
   bool _checkingUsername = false;
   bool? _usernameAvailable;
   String? _usernameCheckMessage;
-  bool _showExistingLogin = false;
 
   @override
   void initState() {
@@ -164,20 +163,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             const SizedBox(height: 16),
                           ],
-                          if (AuthConfig.mode == 'hybrid')
-                            TextButton(
-                              onPressed: () => setState(() {
-                                _showExistingLogin = !_showExistingLogin;
-                              }),
-                              child: const Text('Migrate an existing account'),
-                            ),
-                          if (AuthConfig.mode == 'password' ||
-                              (AuthConfig.mode == 'hybrid' &&
-                                  _showExistingLogin)) ...<Widget>[
-                            if (AuthConfig.mode == 'hybrid')
-                              const Text(
-                                'Log in with your existing username, then open Account and link Google to keep your rooms, picks, and balances.',
-                              ),
+                          if (AuthConfig.mode == 'password') ...<Widget>[
                             if (AuthConfig.mode == 'password')
                               TabBar(
                                 controller: _tabController,
@@ -302,9 +288,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                             ),
                           ],
-                          if ((AuthConfig.mode == 'google' ||
-                                  (AuthConfig.mode == 'hybrid' &&
-                                      !_showExistingLogin)) &&
+                          if (AuthConfig.mode != 'password' &&
                               appState.authError != null)
                             Text(appState.authError!),
                         ],
